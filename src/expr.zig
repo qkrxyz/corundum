@@ -25,12 +25,12 @@ pub fn Expression(T: type) type {
         variable: []u8,
         boolean: bool,
         fraction: struct {
-            numerator: *Expression(T),
-            denominator: *Expression(T),
+            numerator: *const Self(T),
+            denominator: *const Self(T),
         },
         equation: struct {
-            left: *Expression(T),
-            right: *Expression(T),
+            left: *const Self(T),
+            right: *const Self(T),
             sign: enum {
                 equals,
                 not_equals,
@@ -41,8 +41,8 @@ pub fn Expression(T: type) type {
             },
         },
         binary: struct {
-            left: *Expression(T),
-            right: *Expression(T),
+            left: *const Self(T),
+            right: *const Self(T),
             operation: enum {
                 addition,
                 subtraction,
@@ -52,7 +52,7 @@ pub fn Expression(T: type) type {
             },
         },
         unary: struct {
-            operand: *Expression(T),
+            operand: *const Self(T),
             operation: enum {
                 degree,
                 negation,
@@ -61,9 +61,19 @@ pub fn Expression(T: type) type {
         },
         function: struct {
             name: []u8,
-            arguments: []*Expression(T),
-            body: ?*Expression(T),
+            arguments: []*const Self(T),
+            body: ?*const Self(T),
         },
         templated: Kind,
+
+        pub fn hash(self: *const Self) u64 {
+            var hasher = std.hash.XxHash64.init(0);
+            hash_impl(T, self, &hasher);
+            return hasher.final();
+        }
     };
 }
+
+const std = @import("std");
+
+const hash_impl = @import("expr/hash").hash;
