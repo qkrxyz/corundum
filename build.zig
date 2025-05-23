@@ -79,12 +79,12 @@ fn submodules(b: *std.Build, root: *std.Build.Module, entry: std.fs.Dir.Entry, d
         };
 
         // submodule
-        const submodule = b.addModule(dir_path, .{
+        const submodule = b.addModule(entry.name[0 .. entry.name.len - 4], .{
             .root_source_file = b.path(path),
             .target = root.resolved_target,
             .optimize = root.optimize,
         });
-        submodule.addImport(dir, root);
+        submodule.addImport(entry.name[0 .. entry.name.len - 4], module);
         module.addImport(submodule_name, submodule);
 
         // submodule test
