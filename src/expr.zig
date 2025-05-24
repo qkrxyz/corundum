@@ -25,46 +25,50 @@ pub fn Expression(T: type) type {
         variable: []u8,
         boolean: bool,
         fraction: struct {
-            numerator: *const Self(T),
-            denominator: *const Self(T),
+            numerator: *const Self,
+            denominator: *const Self,
         },
         equation: struct {
-            left: *const Self(T),
-            right: *const Self(T),
-            sign: enum {
-                equals,
-                not_equals,
-                more,
-                more_or_eq,
-                less,
-                less_or_eq,
-            },
+            left: *const Self,
+            right: *const Self,
+            sign: Sign,
         },
         binary: struct {
-            left: *const Self(T),
-            right: *const Self(T),
-            operation: enum {
-                addition,
-                subtraction,
-                multiplication,
-                division,
-                exponentiation,
-            },
+            left: *const Self,
+            right: *const Self,
+            operation: BinaryOperation,
         },
         unary: struct {
-            operand: *const Self(T),
-            operation: enum {
-                degree,
-                negation,
-                factorial,
-            },
+            operand: *const Self,
+            operation: UnaryOperation,
         },
         function: struct {
             name: []u8,
-            arguments: []*const Self(T),
-            body: ?*const Self(T),
+            arguments: []*const Self,
+            body: ?*const Self,
         },
         templated: Kind,
+
+        pub const Sign = enum {
+            equals,
+            not_equals,
+            more,
+            more_or_eq,
+            less,
+            less_or_eq,
+        };
+        pub const BinaryOperation = enum {
+            addition,
+            subtraction,
+            multiplication,
+            division,
+            exponentiation,
+        };
+        pub const UnaryOperation = enum {
+            degree,
+            negation,
+            factorial,
+        };
 
         pub fn hash(self: *const Self) u64 {
             var hasher = std.hash.XxHash64.init(0);
