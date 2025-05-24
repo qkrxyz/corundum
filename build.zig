@@ -32,6 +32,15 @@ pub fn build(b: *std.Build) !void {
         try submodules(b, root, entry, "src", run_unit_tests);
     }
 
+    var import_iterator = root.import_table.iterator();
+    while (import_iterator.next()) |import| {
+        for (root.import_table.values()) |module| {
+            if (import.value_ptr.* == module) continue;
+
+            module.addImport(import.key_ptr.*, import.value_ptr.*);
+        }
+    }
+
     // library
     const library = b.addLibrary(.{
         .linkage = .static,
