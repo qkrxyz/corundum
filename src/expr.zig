@@ -75,9 +75,16 @@ pub fn Expression(T: type) type {
             hash_impl(T, self, &hasher);
             return hasher.final();
         }
+
+        pub fn structural(self: *const Self) u32 {
+            var hasher = std.hash.XxHash32.init(0);
+            structural_impl(T, self, &hasher);
+            return hasher.final();
+        }
     };
 }
 
 const std = @import("std");
 
 const hash_impl = @import("expr/hash").hash;
+const structural_impl = @import("expr/structural").structural;
