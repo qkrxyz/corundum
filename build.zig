@@ -39,6 +39,16 @@ pub fn build(b: *std.Build) !void {
         .root_module = root,
     });
     b.installArtifact(library);
+
+    // docs
+    const docs_step = b.step("docs", "Generate documentation");
+
+    const install_docs = b.addInstallDirectory(.{
+        .source_dir = library.getEmittedDocs(),
+        .install_dir = .prefix,
+        .install_subdir = "docs",
+    });
+    docs_step.dependOn(&install_docs.step);
 }
 
 fn submodules(b: *std.Build, root: *std.Build.Module, entry: std.fs.Dir.Entry, dir: []const u8, tests: *std.Build.Step.Run) !void {
@@ -75,7 +85,7 @@ fn submodules(b: *std.Build, root: *std.Build.Module, entry: std.fs.Dir.Entry, d
         const path = b.pathJoin(&.{ dir_path, subentry.name });
         const submodule_name = blk: {
             const first_slash = std.mem.indexOf(u8, path, "/") orelse std.mem.indexOf(u8, path, "\\") orelse unreachable;
-            break :blk path[first_slash + 1 .. path.len - 4];
+            break :blk std.mem.replaceOwned(u8, b.allocator, path[first_slash + 1 .. path.len - 4], "\\", "/") catch unreachable;
         };
 
         // submodule
