@@ -22,60 +22,115 @@ pub fn Expression(T: type) type {
         const Self = @This();
 
         number: T,
-        variable: []u8,
+        variable: []const u8,
         boolean: bool,
+
+        /// `\frac{numerator}{denominator}`
         fraction: struct {
             numerator: *const Self,
             denominator: *const Self,
         },
+
+        /// `left sign right`
         equation: struct {
             left: *const Self,
             right: *const Self,
             sign: Sign,
         },
+
+        /// Two operands - `left operation right`
         binary: struct {
             left: *const Self,
             right: *const Self,
             operation: BinaryOperation,
         },
+
+        /// One operand - `operation operand`
         unary: struct {
             operand: *const Self,
             operation: UnaryOperation,
         },
+
+        /// `name(arguments) = body`
         function: struct {
-            name: []u8,
+            name: []const u8,
             arguments: []*const Self,
             body: ?*const Self,
+
+            pub inline fn create(name: []const u8, arguments: []*const Self) Self {
+                return Self{ .function = .{
+                    .name = name,
+                    .arguments = arguments,
+                } };
+            }
         },
+
+        /// Represents the expression kind this expression is a placeholder for.
         templated: Kind,
 
         pub const Sign = enum {
+            /// `=`
             equals,
+
+            /// `!=`
             not_equals,
+
+            /// `>`
             more,
+
+            /// `>=`
             more_or_eq,
+
+            /// `<`
             less,
+
+            /// `<=`
             less_or_eq,
         };
+
         pub const BinaryOperation = enum {
+            /// `+`
             addition,
+
+            /// `-`
             subtraction,
+
+            /// `*`
             multiplication,
+
+            /// `/`
             division,
+
+            /// `^`
             exponentiation,
         };
+
         pub const UnaryOperation = enum {
+            /// `°`
             degree,
+
+            /// `-`
             negation,
+
+            /// `!`
             factorial,
         };
 
+        /// Compute the hash of this expression.
+        ///
+        /// Uses XxHash64.
         pub fn hash(self: *const Self) u64 {
             var hasher = std.hash.XxHash64.init(0);
             hash_impl(T, self, &hasher);
             return hasher.final();
         }
 
+        /// Compute the structural hash of this expression.
+        ///
+        /// This means that `2 + 3` is equivalent to `4 + 5`, but both have
+        /// different hashes than `x + 2`.
+        ///
+        /// Uses XxHash32.
         pub fn structural(self: *const Self) u32 {
             var hasher = std.hash.XxHash32.init(0);
             structural_impl(T, self, &hasher);
