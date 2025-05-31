@@ -62,7 +62,7 @@ test hash {
 }
 
 test "hash(variable)" {
-    const x = Expression(f64){ .variable = @ptrCast(@constCast("x")) };
+    const x = Expression(f64){ .variable = "x" };
 
     var hasher = std.hash.XxHash64.init(0);
     hash(f64, &x, &hasher);
@@ -72,7 +72,7 @@ test "hash(variable)" {
         hasher = std.hash.XxHash64.init(0);
 
         hasher.update(&[_]u8{@intFromEnum(expr.Kind.variable)});
-        hasher.update(&[_]u8{ 'x', 0 });
+        hasher.update(&[_]u8{'x'});
 
         break :blk hasher.final();
     };
@@ -101,7 +101,7 @@ test "hash(boolean)" {
 
 test "hash(fraction)" {
     const pi_2 = Expression(f64){ .fraction = .{
-        .numerator = &.{ .variable = @ptrCast(@constCast("pi")) },
+        .numerator = &.{ .variable = "pi" },
         .denominator = &.{ .number = 2.0 },
     } };
 
@@ -114,7 +114,7 @@ test "hash(fraction)" {
 
         hasher.update(&[_]u8{@intFromEnum(expr.Kind.fraction)});
         hasher.update(&[_]u8{@intFromEnum(expr.Kind.variable)});
-        hasher.update(&[_]u8{ 'p', 'i', 0 });
+        hasher.update(&[_]u8{ 'p', 'i' });
         hasher.update(&[_]u8{@intFromEnum(expr.Kind.number)});
         hasher.update(&std.mem.toBytes(@as(f64, 2.0)));
 
@@ -126,7 +126,7 @@ test "hash(fraction)" {
 
 test "hash(equation)" {
     const x_equals_2 = Expression(f64){ .equation = .{
-        .left = &.{ .variable = @ptrCast(@constCast("x")) },
+        .left = &.{ .variable = "x" },
         .right = &.{ .number = 2.0 },
         .sign = .equals,
     } };
@@ -140,7 +140,7 @@ test "hash(equation)" {
 
         hasher.update(&[_]u8{@intFromEnum(expr.Kind.equation)});
         hasher.update(&[_]u8{@intFromEnum(expr.Kind.variable)});
-        hasher.update(&[_]u8{ 'x', 0 });
+        hasher.update(&[_]u8{'x'});
         hasher.update(&[_]u8{@intFromEnum(expr.Kind.number)});
         hasher.update(&std.mem.toBytes(@as(f64, 2.0)));
         hasher.update(&[_]u8{@intFromEnum(expr.Expression(f64).Sign.equals)});
@@ -153,7 +153,7 @@ test "hash(equation)" {
 
 test "hash(binary)" {
     const x_plus_2 = Expression(f64){ .binary = .{
-        .left = &.{ .variable = @ptrCast(@constCast("x")) },
+        .left = &.{ .variable = "x" },
         .right = &.{ .number = 2.0 },
         .operation = .addition,
     } };
@@ -167,7 +167,7 @@ test "hash(binary)" {
 
         hasher.update(&[_]u8{@intFromEnum(expr.Kind.binary)});
         hasher.update(&[_]u8{@intFromEnum(expr.Kind.variable)});
-        hasher.update(&[_]u8{ 'x', 0 });
+        hasher.update(&[_]u8{'x'});
         hasher.update(&[_]u8{@intFromEnum(expr.Kind.number)});
         hasher.update(&std.mem.toBytes(@as(f64, 2.0)));
         hasher.update(&[_]u8{@intFromEnum(expr.Expression(f64).BinaryOperation.addition)});
@@ -204,9 +204,9 @@ test "hash(unary)" {
 
 test "hash(function)" {
     const sin = Expression(f64){ .function = .{
-        .name = @ptrCast(@constCast("sin")),
+        .name = "sin",
         .arguments = @ptrCast(@constCast(&[_]*const Expression(f64){
-            &.{ .variable = @ptrCast(@constCast("x")) },
+            &.{ .variable = "x" },
         })),
         .body = null,
     } };
@@ -219,10 +219,10 @@ test "hash(function)" {
         hasher = std.hash.XxHash64.init(0);
 
         hasher.update(&[_]u8{@intFromEnum(expr.Kind.function)});
-        hasher.update(&[_]u8{ 's', 'i', 'n', 0 });
+        hasher.update(&[_]u8{ 's', 'i', 'n' });
         hasher.update(&std.mem.toBytes(@as(usize, 1)));
         hasher.update(&[_]u8{@intFromEnum(expr.Kind.variable)});
-        hasher.update(&[_]u8{ 'x', 0 });
+        hasher.update(&[_]u8{'x'});
 
         break :blk hasher.final();
     };

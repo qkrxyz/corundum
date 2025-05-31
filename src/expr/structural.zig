@@ -69,14 +69,14 @@ test structural {
 }
 
 test "structural(variable)" {
-    const x = Expression(f64){ .variable = @ptrCast(@constCast("x")) };
+    const x = Expression(f64){ .variable = "x" };
 
     var hasher = std.hash.XxHash64.init(0);
     structural(f64, &x, &hasher);
     const result = hasher.final();
 
     hasher = std.hash.XxHash64.init(0);
-    const y = Expression(f64){ .variable = @ptrCast(@constCast("y")) };
+    const y = Expression(f64){ .variable = "y" };
     structural(f64, &y, &hasher);
     const result2 = hasher.final();
 
@@ -116,7 +116,7 @@ test "structural(boolean)" {
 
 test "structural(fraction)" {
     const pi_2 = Expression(f64){ .fraction = .{
-        .numerator = &.{ .variable = @ptrCast(@constCast("pi")) },
+        .numerator = &.{ .variable = "pi" },
         .denominator = &.{ .number = 2.0 },
     } };
 
@@ -126,7 +126,7 @@ test "structural(fraction)" {
 
     hasher = std.hash.XxHash64.init(0);
     const pi_3 = Expression(f64){ .fraction = .{
-        .numerator = &.{ .variable = @ptrCast(@constCast("pi")) },
+        .numerator = &.{ .variable = "pi" },
         .denominator = &.{ .number = 3.0 },
     } };
     structural(f64, &pi_3, &hasher);
@@ -147,7 +147,7 @@ test "structural(fraction)" {
 
 test "structural(equation)" {
     const x_equals_two = Expression(f64){ .equation = .{
-        .left = &.{ .variable = @ptrCast(@constCast("x")) },
+        .left = &.{ .variable = "pi" },
         .right = &.{ .number = 2.0 },
         .sign = .equals,
     } };
@@ -158,7 +158,7 @@ test "structural(equation)" {
 
     hasher = std.hash.XxHash64.init(0);
     const y_equals_three = Expression(f64){ .equation = .{
-        .left = &.{ .variable = @ptrCast(@constCast("y")) },
+        .left = &.{ .variable = "y" },
         .right = &.{ .number = 3.0 },
         .sign = .equals,
     } };
@@ -182,7 +182,7 @@ test "structural(equation)" {
 
 test "structural(binary)" {
     const x_plus_two = Expression(f64){ .binary = .{
-        .left = &.{ .variable = @ptrCast(@constCast("x")) },
+        .left = &.{ .variable = "x" },
         .right = &.{ .number = 2.0 },
         .operation = .addition,
     } };
@@ -193,7 +193,7 @@ test "structural(binary)" {
 
     hasher = std.hash.XxHash64.init(0);
     const y_plus_three = Expression(f64){ .binary = .{
-        .left = &.{ .variable = @ptrCast(@constCast("y")) },
+        .left = &.{ .variable = "y" },
         .right = &.{ .number = 3.0 },
         .operation = .addition,
     } };
@@ -217,7 +217,7 @@ test "structural(binary)" {
 
 test "structural(unary)" {
     const x_degree = Expression(f64){ .unary = .{
-        .operand = &.{ .variable = @ptrCast(@constCast("x")) },
+        .operand = &.{ .variable = "x" },
         .operation = .degree,
     } };
 
@@ -227,7 +227,7 @@ test "structural(unary)" {
 
     hasher = std.hash.XxHash64.init(0);
     const y_degree = Expression(f64){ .unary = .{
-        .operand = &.{ .variable = @ptrCast(@constCast("y")) },
+        .operand = &.{ .variable = "y" },
         .operation = .degree,
     } };
     structural(f64, &y_degree, &hasher);
@@ -249,9 +249,9 @@ test "structural(unary)" {
 
 test "structural(function)" {
     const sin = Expression(f64){ .function = .{
-        .name = @ptrCast(@constCast("sin")),
+        .name = "sin",
         .arguments = @ptrCast(@constCast(&[_]*const Expression(f64){
-            &.{ .variable = @ptrCast(@constCast("x")) },
+            &.{ .variable = "x" },
         })),
         .body = null,
     } };
@@ -262,9 +262,9 @@ test "structural(function)" {
 
     hasher = std.hash.XxHash64.init(0);
     const cos = Expression(f64){ .function = .{
-        .name = @ptrCast(@constCast("cos")),
+        .name = "cos",
         .arguments = @ptrCast(@constCast(&[_]*const Expression(f64){
-            &.{ .variable = @ptrCast(@constCast("y")) },
+            &.{ .variable = "y" },
         })),
         .body = null,
     } };

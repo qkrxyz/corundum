@@ -33,29 +33,29 @@ pub fn Expression(T: type) type {
 
         /// `left sign right`
         equation: struct {
+            sign: Sign,
             left: *const Self,
             right: *const Self,
-            sign: Sign,
         },
 
         /// Two operands - `left operation right`
         binary: struct {
+            operation: BinaryOperation,
             left: *const Self,
             right: *const Self,
-            operation: BinaryOperation,
         },
 
         /// One operand - `operation operand`
         unary: struct {
-            operand: *const Self,
             operation: UnaryOperation,
+            operand: *const Self,
         },
 
         /// `name(arguments) = body`
         function: struct {
+            body: ?*const Self,
             name: []const u8,
             arguments: []*const Self,
-            body: ?*const Self,
 
             pub inline fn create(name: []const u8, arguments: []*const Self) Self {
                 return Self{ .function = .{
@@ -68,7 +68,7 @@ pub fn Expression(T: type) type {
         /// Represents the expression kind this expression is a placeholder for.
         templated: Kind,
 
-        pub const Sign = enum {
+        pub const Sign = enum(u8) {
             /// `=`
             equals,
 
@@ -136,6 +136,45 @@ pub fn Expression(T: type) type {
             structural_impl(T, self, &hasher);
             return hasher.final();
         }
+
+        /// Creates a deep clone of this expression.
+        pub fn clone(self: *const Self, allocator: std.mem.Allocator) !*const Self {
+            return clone_impl(T, self, allocator);
+        }
+
+        /// Frees the memory associated with this expression.
+        pub fn deinit(self: *const Self, allocator: std.mem.Allocator) void {
+            switch (self.*) {
+                .number, .boolean, .templated => {},
+                .variable => |variable| allocator.free(variable),
+                .fraction => |fraction| {
+                    fraction.numerator.deinit(allocator);
+                    fraction.denominator.deinit(allocator);
+                },
+                .equation => |equation| {
+                    equation.left.deinit(allocator);
+                    equation.right.deinit(allocator);
+                },
+                .binary => |binary| {
+                    binary.left.deinit(allocator);
+                    binary.right.deinit(allocator);
+                },
+                .unary => |unary| {
+                    unary.operand.deinit(allocator);
+                },
+                .function => |function| {
+                    allocator.free(function.name);
+
+                    for (function.arguments) |argument| {
+                        argument.deinit(allocator);
+                    }
+
+                    if (function.body) |body| body.deinit(allocator);
+                },
+            }
+
+            allocator.destroy(self);
+        }
     };
 }
 
@@ -143,3 +182,4 @@ const std = @import("std");
 
 const hash_impl = @import("expr/hash").hash;
 const structural_impl = @import("expr/structural").structural;
+const clone_impl = @import("expr/clone").clone;
