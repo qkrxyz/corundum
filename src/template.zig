@@ -39,7 +39,7 @@ pub const Kind = enum {
 /// }
 /// ```
 pub fn Bindings(comptime T: type) type {
-    return std.StaticStringMap(*const Expression(T));
+    return std.StringArrayHashMap(*const Expression(T));
 }
 
 /// A mathematical template/identity that can be solved.
@@ -61,7 +61,6 @@ pub fn Template(comptime T: type) type {
         identity: struct {
             name: []const u8,
             ast: Expression(T),
-            matches: fn (*const Expression(T)) anyerror!void,
             proof: fn () anyerror!Solution(T),
         },
 
@@ -81,8 +80,8 @@ pub fn Template(comptime T: type) type {
         structure: struct {
             name: []const u8,
             ast: Expression(T),
-            matches: fn (*const Expression(T)) anyerror!Bindings(T),
-            solve: fn (Bindings(T), std.mem.Allocator) anyerror!Solution(T),
+            matches: fn (*const Expression(T), std.mem.Allocator) anyerror!Bindings(T),
+            solve: fn (*const Expression(T), Bindings(T), std.mem.Allocator) anyerror!Solution(T),
         },
 
         /// A dynamic template that doesn't have a concrete representation.
@@ -97,7 +96,7 @@ pub fn Template(comptime T: type) type {
         /// It gets matched by the engine according to the result of `matches`.
         dynamic: struct {
             name: []const u8,
-            matches: fn (*const Expression(T)) anyerror!Bindings(T),
+            matches: fn (*const Expression(T), std.mem.Allocator) anyerror!Bindings(T),
             solve: fn (Bindings(T), std.mem.Allocator) anyerror!Solution(T),
         },
     };
@@ -106,5 +105,8 @@ pub fn Template(comptime T: type) type {
 const std = @import("std");
 
 const expr = @import("expr");
+const Templates = @import("templates").templates;
+
 const Expression = expr.Expression;
-const Solution = @import("template/solution").Solution;
+pub const Solution = @import("template/solution").Solution;
+pub const Step = @import("template/step").Step;
