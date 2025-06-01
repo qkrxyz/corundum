@@ -1,4 +1,4 @@
-const Key = enum {
+pub const Key = enum {
     x,
 };
 

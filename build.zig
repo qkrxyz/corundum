@@ -47,6 +47,23 @@ pub fn build(b: *std.Build) !void {
     });
     b.installArtifact(library);
 
+    // executable
+    const exe = b.addExecutable(.{
+        .name = "corundum",
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.root_module.addImport("corundum", root);
+
+    const run_exe = b.addRunArtifact(exe);
+    run_exe.step.dependOn(b.getInstallStep());
+
+    if (b.args) |args| run_exe.addArgs(args);
+
+    const run_step = b.step("run", "Run the executable");
+    run_step.dependOn(&run_exe.step);
+
     // docs
     const docs_step = b.step("docs", "Generate documentation");
 
@@ -64,6 +81,7 @@ fn modules(b: *std.Build, root: *std.Build.Module, tests: *std.Build.Step.Run) !
         if (entry.kind != .file) continue;
         if (std.mem.indexOf(u8, entry.name, ".zig") != entry.name.len - 4) continue;
         if (std.mem.eql(u8, "root.zig", entry.name)) continue;
+        if (std.mem.eql(u8, "main.zig", entry.name)) continue;
 
         try submodules(b, root, entry, "src", tests);
     }
@@ -171,13 +189,12 @@ pub fn generate(
         \\    return struct {{
         \\        const Self = @This();
         \\
-        \\        const inner: std.StaticStringMap({s}) = .initComptime(.{{
+        \\        const inner: std.StaticStringMap(type) = .initComptime(.{{
         \\
     , .{
         options.parent_name,
         options.parent_name,
         options.function_name,
-        options.type_name,
     }));
 
     const File = struct {
@@ -205,44 +222,32 @@ pub fn generate(
         };
         try files.append(info);
 
-        try generated.appendSlice(b.fmt("            .{{ \"{s}\", @import(\"{s}\").@\"{s}\"(T) }},\n", .{ info.name, info.name, info.basename }));
+        try generated.appendSlice(b.fmt("            .{{ \"{s}\", @import(\"{s}\") }},\n", .{ info.name, info.name }));
     }
 
-    try generated.appendSlice(b.fmt(
-        \\        }});
+    try generated.appendSlice(
+        \\        });
         \\
-        \\        pub inline fn allTemplates() std.StaticStringMap({s}) {{
-        \\            return inner;
-        \\        }}
-        \\
-        \\        pub inline fn get(name: []const u8) ?{s} {{
-        \\            return inner.get(name);
-        \\        }}
-        \\
-        \\
-        \\        pub inline fn filter(kind: {s}.Kind) std.StaticStringMap({s}) {{
-        \\            return .initComptime(comptime blk: {{
-        \\                var result: [inner.values().len]struct{{ []const u8, {s} }} = undefined;
-        \\                var i = 0;
-        \\
-        \\                for (inner.keys(), inner.values()) |key, value| {{
-        \\                    if(value == kind) {{
-        \\                        result[i] = .{{ key, value }};
-        \\                        i += 1;
-        \\                    }}
-        \\                }}
-        \\                break :blk result[0..i];
-        \\            }});
-        \\        }}
-        \\    }};
-        \\}}
-    , .{
-        options.type_name,
-        options.type_name,
-        options.parent_name,
-        options.type_name,
-        options.type_name,
-    }));
+        \\        pub inline fn get(comptime name: []const u8) blk: {
+        \\            if (inner.get(name)) |module| {
+        \\                break :blk struct {
+        \\                    key: @TypeOf(@field(module, "Key")),
+        \\                    module: @TypeOf(@field(module, name[std.mem.lastIndexOf(u8, name, "/").? + 1 ..])(T)),
+        \\                };
+        \\            } else {
+        \\                break :blk null;
+        \\            }
+        \\        } {
+        \\            if (inner.get(name)) |module| {
+        \\                return .{
+        \\                    .key = @field(module, "Key"),
+        \\                    .module = @field(module, name[std.mem.lastIndexOf(u8, name, "/").? + 1 ..])(T),
+        \\                };
+        \\            }
+        \\        }
+        \\    };
+        \\}
+    );
 
     const wf = b.addWriteFile(
         options.file_path,
