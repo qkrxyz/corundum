@@ -38,8 +38,8 @@ pub const Kind = enum {
 ///     } },
 /// }
 /// ```
-pub fn Bindings(comptime T: type) type {
-    return std.StringArrayHashMap(*const Expression(T));
+pub fn Bindings(comptime Key: type, T: type) type {
+    return std.EnumMap(Key, *const Expression(T));
 }
 
 /// A mathematical template/identity that can be solved.
@@ -48,7 +48,7 @@ pub fn Bindings(comptime T: type) type {
 /// - an identity (well-defined AST, has a proof),
 /// - a structure (allows for parameters of a given type),
 /// - a dynamic template (doesn't have an AST).
-pub fn Template(comptime T: type) type {
+pub fn Template(comptime Key: type, comptime T: type) type {
     switch (T) {
         f16, f32, f64, f128 => {},
         else => @compileError("cannot use type " ++ @typeName(T) ++ " as a generic argument for `Expression`"),
@@ -80,8 +80,8 @@ pub fn Template(comptime T: type) type {
         structure: struct {
             name: []const u8,
             ast: Expression(T),
-            matches: fn (*const Expression(T), std.mem.Allocator) anyerror!Bindings(T),
-            solve: fn (*const Expression(T), Bindings(T), std.mem.Allocator) anyerror!Solution(T),
+            matches: fn (*const Expression(T)) anyerror!Bindings(Key, T),
+            solve: fn (*const Expression(T), Bindings(Key, T), std.mem.Allocator) anyerror!Solution(T),
         },
 
         /// A dynamic template that doesn't have a concrete representation.
@@ -96,8 +96,8 @@ pub fn Template(comptime T: type) type {
         /// It gets matched by the engine according to the result of `matches`.
         dynamic: struct {
             name: []const u8,
-            matches: fn (*const Expression(T), std.mem.Allocator) anyerror!Bindings(T),
-            solve: fn (Bindings(T), std.mem.Allocator) anyerror!Solution(T),
+            matches: fn (*const Expression(T)) anyerror!Bindings(Key, T),
+            solve: fn (Bindings(Key, T), std.mem.Allocator) anyerror!Solution(T),
         },
     };
 }
