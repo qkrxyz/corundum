@@ -20,17 +20,16 @@ pub fn number(comptime T: type) Template(Key, T) {
         }
 
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            const steps = try allocator.alloc(Step(T), 1);
-            steps[0] = Step(T){
+            const solution = try Solution(T).init(1, allocator);
+
+            solution.steps[0] = try (Step(T){
                 .before = try expression.clone(allocator),
                 .after = try expression.clone(allocator),
                 .description = try std.fmt.allocPrint(allocator, "{d} is a number.", .{bindings.get(Key.x).?.number}),
                 .substeps = &.{},
-            };
+            }).clone(allocator);
 
-            return Solution(T){
-                .steps = steps,
-            };
+            return solution;
         }
     };
 
@@ -89,8 +88,8 @@ test "number(T).solve" {
     defer solution.deinit(testing.allocator);
 
     const expected: Solution(f64) = Solution(f64){
-        .steps = @constCast(&[_]Step(f64){
-            .{
+        .steps = @constCast(&[_]*const Step(f64){
+            &.{
                 .before = &.{ .number = 1.0 },
                 .after = &.{ .number = 1.0 },
                 .description = "1 is a number.",

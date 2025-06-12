@@ -7,7 +7,11 @@ pub fn Solution(comptime T: type) type {
     return struct {
         const Self = @This();
 
-        steps: []Step(T),
+        steps: []*const Step(T),
+
+        pub fn init(len: usize, allocator: std.mem.Allocator) !Self {
+            return Self{ .steps = try allocator.alloc(*const Step(T), len) };
+        }
 
         pub fn deinit(self: *const Self, allocator: std.mem.Allocator) void {
             for (self.steps) |step| {
