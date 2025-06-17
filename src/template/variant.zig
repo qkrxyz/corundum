@@ -10,8 +10,9 @@ pub fn Variant(comptime Key: type, comptime T: type) type {
 
     return struct {
         name: []const u8,
-        matches: fn (*const Expression(T)) anyerror!Bindings(Key, T),
-        solve: fn (*const Expression(T), Bindings(Key, T), std.mem.Allocator) anyerror!Solution(T),
+        matches: *const fn (*const Expression(T)) anyerror!Bindings(Key, T),
+        solve: *const fn (*const Expression(T), Bindings(Key, T), std.mem.Allocator) anyerror!Solution(T),
+        score: usize,
     };
 }
 

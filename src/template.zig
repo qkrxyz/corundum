@@ -107,7 +107,9 @@ pub fn Template(comptime Key: type, comptime T: type) type {
 const std = @import("std");
 
 const expr = @import("expr");
-pub const Templates = @import("templates").templates;
+const templates = @import("templates");
+
+pub const Templates = templates.templates;
 
 const Expression = expr.Expression;
 pub const Solution = @import("template/solution").Solution;

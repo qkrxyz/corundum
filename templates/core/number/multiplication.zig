@@ -4,6 +4,8 @@ pub const Key = enum {
 };
 
 pub fn multiplication(comptime T: type) Template(Key, T) {
+    const variants = @constCast(&template.Templates.variants(.@"core/number/multiplication", T));
+
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             const number = comptime template.Templates.get(.@"core/number/number").module(T);
@@ -18,8 +20,13 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
             return bindings;
         }
 
-        // generic solver
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+            for (variants) |variant| {
+                const new_bindings = variant.matches(expression) catch continue;
+
+                return variant.solve(expression, new_bindings, allocator);
+            }
+
             const a = bindings.get(.a).?.number;
             const b = bindings.get(.b).?.number;
 
@@ -31,11 +38,11 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
 
             // c, d
             const c = @divFloor(a, 1.0);
-            const d = @rem(a, 1.0);
+            const d = @mod(a, 1.0);
 
             // e, f
             const e = @divFloor(b, 1.0);
-            const f = @rem(b, 1.0);
+            const f = @mod(b, 1.0);
 
             // expand
             try steps.append(try (Step(T){
@@ -125,22 +132,24 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                 .substeps = blk: {
                     var substeps = try allocator.alloc(*const Step(T), 4);
 
-                    // always integer * integer
-                    substeps[0] = try (Step(T){
-                        .before = try steps.items[0].after.?.binary.left.binary.left.binary.left.clone(allocator),
-                        .after = try (Expression(T){ .number = ce }).clone(allocator),
-                        .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ c, e }),
-                        .substeps = try allocator.alloc(*const Step(T), 0),
-                    }).clone(allocator);
+                    // always integer * integer, always one step
+                    const solution_one = try solve(
+                        steps.items[0].after.?.binary.left.binary.left.binary.left,
+                        Bindings(Key, T).init(.{
+                            .a = steps.items[0].after.?.binary.left.binary.left.binary.left.binary.right,
+                            .b = steps.items[0].after.?.binary.left.binary.left.binary.left.binary.left,
+                        }),
+                        allocator,
+                    );
+                    substeps[0] = solution_one.steps[0];
+                    defer allocator.free(solution_one.steps);
 
                     // always integer * small float (x2)
-                    const small_float_int = template.Templates.get(.@"core/number/multiplication/small float, int");
-
                     substeps[1] = try (Step(T){
                         .before = try steps.items[0].after.?.binary.left.binary.left.binary.right.clone(allocator),
                         .after = try (Expression(T){ .number = cf }).clone(allocator),
                         .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ c, f }),
-                        .substeps = (try small_float_int(T).solve(
+                        .substeps = (try solve(
                             steps.items[0].after.?.binary.left.binary.left.binary.right,
                             Bindings(Key, T).init(.{
                                 .a = steps.items[0].after.?.binary.left.binary.left.binary.right.binary.right,
@@ -154,7 +163,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                         .before = try steps.items[0].after.?.binary.left.binary.right.clone(allocator),
                         .after = try (Expression(T){ .number = de }).clone(allocator),
                         .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ d, e }),
-                        .substeps = (try small_float_int(T).solve(
+                        .substeps = (try solve(
                             steps.items[0].after.?.binary.left.binary.right,
                             Bindings(Key, T).init(.{
                                 .a = steps.items[0].after.?.binary.left.binary.right.binary.left,
@@ -164,14 +173,12 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                         )).steps,
                     }).clone(allocator);
 
-                    // always small float * small float
-                    const small_floats = template.Templates.get(.@"core/number/multiplication/small float, small float");
-
+                    // always non-zero/one small float * non-zero/one small float
                     substeps[3] = try (Step(T){
                         .before = try steps.items[0].after.?.binary.right.clone(allocator),
                         .after = try (Expression(T){ .number = df }).clone(allocator),
                         .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ d, f }),
-                        .substeps = (try small_floats(T).solve(
+                        .substeps = (try solve(
                             steps.items[0].after.?.binary.right,
                             Bindings(Key, T).init(.{
                                 .a = steps.items[0].after.?.binary.right.binary.left,
@@ -209,12 +216,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
             },
             .matches = Impl.matches,
             .solve = Impl.solve,
-            .variants = @constCast(&[_]Variant(Key, T){
-                template.Templates.get(.@"core/number/multiplication/small float, small float")(T),
-                template.Templates.get(.@"core/number/multiplication/small float, int")(T),
-                template.Templates.get(.@"core/number/multiplication/float, int")(T),
-                template.Templates.get(.@"core/number/multiplication/int, int")(T),
-            }),
+            .variants = variants,
         },
     };
 }
@@ -227,9 +229,7 @@ test multiplication {
         .right = &.{ .number = 3.0 },
     } };
 
-    try testing.expect(Multiplication.structure.ast.structural() == two_minus_one.structural());
-
-    _ = template.Templates.templates();
+    try testing.expect((comptime Multiplication.structure.ast.structural()) == two_minus_one.structural());
 }
 
 test "multiplication(T).matches" {
@@ -256,41 +256,219 @@ test "multiplication(T).matches" {
 }
 
 test "multiplication(T).solve" {
-    const Multiplication = multiplication(f64);
+    inline for (.{ f16, f32, f64 }) |T| {
+        const Multiplication = multiplication(T);
 
-    const expression = Expression(f64){ .binary = .{
-        .operation = .multiplication,
-        .left = &.{ .number = 4.5 },
-        .right = &.{ .number = 1.5 },
-    } };
+        const expression = Expression(T){ .binary = .{
+            .operation = .multiplication,
+            .left = &.{ .number = 4.5 },
+            .right = &.{ .number = 1.5 },
+        } };
 
-    const bindings = try Multiplication.structure.matches(&expression);
-    const solution = try Multiplication.structure.solve(&expression, bindings, testing.allocator);
-    defer solution.deinit(testing.allocator);
+        const bindings = try Multiplication.structure.matches(&expression);
+        const solution = try Multiplication.structure.solve(&expression, bindings, testing.allocator);
+        defer solution.deinit(testing.allocator);
 
-    const stderr = std.io.getStdErr().writer();
-    for (solution.steps, 0..) |step, i| {
-        std.debug.print("#{d}. ", .{i + 1});
-        try std.zon.stringify.serializeArbitraryDepth(step.before, .{ .whitespace = false }, stderr);
-        std.debug.print(" -> ", .{});
-        try std.zon.stringify.serializeArbitraryDepth(step.after.?, .{ .whitespace = false }, stderr);
-        std.debug.print(" ('{s}')\n", .{step.description});
+        const expected = Solution(T){
+            .steps = @constCast(&[_]*const Step(T){
+                &.{
+                    .before = &.{
+                        .binary = .{
+                            .operation = .multiplication,
+                            .left = &.{ .number = 4.5 },
+                            .right = &.{ .number = 1.5 },
+                        },
+                    },
+                    .after = &.{ .binary = .{
+                        .operation = .addition,
+                        .left = &.{
+                            .binary = .{
+                                .operation = .addition,
+                                .left = &.{
+                                    .binary = .{
+                                        .operation = .addition,
+                                        .left = &.{ .binary = .{
+                                            .operation = .multiplication,
+                                            .left = &.{ .number = 4.0 },
+                                            .right = &.{ .number = 1.0 },
+                                        } },
+                                        .right = &.{ .binary = .{
+                                            .operation = .multiplication,
+                                            .left = &.{ .number = 4.0 },
+                                            .right = &.{ .number = 0.5 },
+                                        } },
+                                    },
+                                },
+                                .right = &.{ .binary = .{
+                                    .operation = .multiplication,
+                                    .left = &.{ .number = 0.5 },
+                                    .right = &.{ .number = 1.0 },
+                                } },
+                            },
+                        },
+                        .right = &.{ .binary = .{
+                            .operation = .multiplication,
+                            .left = &.{ .number = 0.5 },
+                            .right = &.{ .number = 0.5 },
+                        } },
+                    } },
+                    .description = "Expand\n\nWe can rewrite $a$ as $c + d$, where $c$ is the whole part of $a$ and $d$ is the fractional part.\nWe can also rewrite $b$ as $e + f$, where $e$ is the whole part of $b$ and $f$ is the fractional part.\nThis gives us $a * b = (c + d) * (e + f) = ce + cf + de + df$.",
+                    .substeps = &.{},
+                },
+                &.{
+                    .before = &.{ .binary = .{
+                        .operation = .addition,
+                        .left = &.{ .binary = .{
+                            .operation = .addition,
+                            .left = &.{ .binary = .{
+                                .operation = .addition,
+                                .left = &.{ .binary = .{
+                                    .operation = .multiplication,
+                                    .left = &.{ .number = 4.0 },
+                                    .right = &.{ .number = 1.0 },
+                                } },
+                                .right = &.{ .binary = .{
+                                    .operation = .multiplication,
+                                    .left = &.{ .number = 4.0 },
+                                    .right = &.{ .number = 0.5 },
+                                } },
+                            } },
+                            .right = &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 0.5 },
+                                .right = &.{ .number = 1 },
+                            } },
+                        } },
+                        .right = &.{ .binary = .{
+                            .operation = .multiplication,
+                            .left = &.{ .number = 0.5 },
+                            .right = &.{ .number = 0.5 },
+                        } },
+                    } },
+                    .after = &.{ .binary = .{
+                        .operation = .addition,
+                        .left = &.{ .binary = .{
+                            .operation = .addition,
+                            .left = &.{ .binary = .{
+                                .operation = .addition,
+                                .left = &.{ .number = 4 },
+                                .right = &.{ .number = 2 },
+                            } },
+                            .right = &.{ .number = 0.5 },
+                        } },
+                        .right = &.{ .number = 0.25 },
+                    } },
+                    .description = "Simplify",
+                    .substeps = @constCast(&[_]*const Step(T){
+                        &.{
+                            .before = &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 4.0 },
+                                .right = &.{ .number = 1.0 },
+                            } },
+                            .after = &.{ .number = 4.0 },
+                            .description = "Anything multiplied by 1 is equal to itself",
+                            .substeps = &.{},
+                        },
+                        &.{
+                            .before = &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 4.0 },
+                                .right = &.{ .number = 0.5 },
+                            } },
+                            .after = &.{ .number = 2.0 },
+                            .description = "Multiply 4 by 0.5",
+                            .substeps = @constCast(&[_]*const Step(T){
+                                &.{
+                                    .before = &.{ .binary = .{
+                                        .operation = .multiplication,
+                                        .left = &.{ .number = 4.0 },
+                                        .right = &.{ .number = 0.5 },
+                                    } },
+                                    .after = &.{ .number = 20.0 },
+                                    .description = "Multiply the fractional part of 0.5 (as if it was an integer - 5) with 4",
+                                    .substeps = &.{},
+                                },
+                                &.{
+                                    .before = &.{ .number = 20.0 },
+                                    .after = &.{ .number = 2.0 },
+                                    .description = "Move the decimal point left by 1 place(-s)",
+                                    .substeps = &.{},
+                                },
+                            }),
+                        },
+                        &.{
+                            .before = &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 0.5 },
+                                .right = &.{ .number = 1.0 },
+                            } },
+                            .after = &.{ .number = 0.5 },
+                            .description = "Multiply 0.5 by 1",
+                            .substeps = @constCast(&[_]*const Step(T){
+                                &.{
+                                    .before = &.{ .binary = .{
+                                        .operation = .multiplication,
+                                        .left = &.{ .number = 0.5 },
+                                        .right = &.{ .number = 1 },
+                                    } },
+                                    .after = &.{ .number = 0.5 },
+                                    .description = "Anything multiplied by 1 is equal to itself",
+                                    .substeps = &.{},
+                                },
+                            }),
+                        },
+                        &.{
+                            .before = &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 0.5 },
+                                .right = &.{ .number = 0.5 },
+                            } },
+                            .after = &.{ .number = 0.25 },
+                            .description = "Multiply 0.5 by 0.5",
+                            .substeps = @constCast(&[_]*const Step(T){
+                                &.{
+                                    .before = &.{ .binary = .{
+                                        .operation = .multiplication,
+                                        .left = &.{ .number = 0.5 },
+                                        .right = &.{ .number = 0.5 },
+                                    } },
+                                    .after = &.{ .number = 25 },
+                                    .description = "Multiply the fractional parts of 0.5 and 0.5 (5 and 5) as if they were integers",
+                                    .substeps = &.{},
+                                },
+                                &.{
+                                    .before = &.{ .number = 25 },
+                                    .after = &.{ .number = 0.25 },
+                                    .description = "Make the result have 2 decimal places",
+                                    .substeps = &.{},
+                                },
+                            }),
+                        },
+                    }),
+                },
+                &.{
+                    .before = &.{ .binary = .{
+                        .operation = .addition,
+                        .left = &.{ .binary = .{
+                            .operation = .addition,
+                            .left = &.{ .binary = .{
+                                .operation = .addition,
+                                .left = &.{ .number = 4.0 },
+                                .right = &.{ .number = 2.0 },
+                            } },
+                            .right = &.{ .number = 0.5 },
+                        } },
+                        .right = &.{ .number = 0.25 },
+                    } },
+                    .after = &.{ .number = 6.75 },
+                    .description = "Add 4, 2, 0.5 and 0.25 together",
+                    .substeps = &.{},
+                },
+            }),
+        };
 
-        for (step.substeps, 0..) |substep, j| {
-            std.debug.print("\t#{d}.{d} ", .{ i + 1, j + 1 });
-            try std.zon.stringify.serializeArbitraryDepth(substep.before, .{ .whitespace = false }, stderr);
-            std.debug.print(" -> ", .{});
-            try std.zon.stringify.serializeArbitraryDepth(substep.after.?, .{ .whitespace = false }, stderr);
-            std.debug.print(" ('{s}')\n", .{substep.description});
-
-            for (substep.substeps, 0..) |subsubstep, k| {
-                std.debug.print("\t\t#{d}.{d}.{d} ", .{ i + 1, j + 1, k + 1 });
-                try std.zon.stringify.serializeArbitraryDepth(subsubstep.before, .{ .whitespace = false }, stderr);
-                std.debug.print(" -> ", .{});
-                try std.zon.stringify.serializeArbitraryDepth(subsubstep.after.?, .{ .whitespace = false }, stderr);
-                std.debug.print(" ('{s}')\n", .{subsubstep.description});
-            }
-        }
+        try testing.expectEqualDeep(expected, solution);
     }
 }
 

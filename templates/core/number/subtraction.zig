@@ -4,6 +4,8 @@ pub const Key = enum {
 };
 
 pub fn subtraction(comptime T: type) Template(Key, T) {
+    const variants = @constCast(&template.Templates.variants(.@"core/number/subtraction", T));
+
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             const number = comptime template.Templates.get(.@"core/number/number").module(T);
@@ -19,6 +21,12 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
         }
 
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+            for (variants) |variant| {
+                const new_bindings = variant.matches(expression) catch continue;
+
+                return variant.solve(expression, new_bindings, allocator);
+            }
+
             const a = bindings.get(.a).?.number;
             const b = bindings.get(.b).?.number;
 
@@ -81,7 +89,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
             },
             .matches = Impl.matches,
             .solve = Impl.solve,
-            .variants = &.{},
+            .variants = variants,
         },
     };
 }

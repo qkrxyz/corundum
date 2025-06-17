@@ -13,9 +13,7 @@ pub fn number(comptime T: type) Template(Key, T) {
                 return error.Infinity;
             }
 
-            var bindings = Bindings(Key, T).init(.{});
-            bindings.put(Key.x, expression);
-
+            const bindings = Bindings(Key, T).init(.{ .x = expression });
             return bindings;
         }
 

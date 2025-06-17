@@ -82,6 +82,56 @@ pub fn build(b: *std.Build) !void {
             \\        break :blk kinds[0..length];
             \\    };
             \\}
+            \\
+            \\pub inline fn variants(comptime kind: Kind, comptime T: type) blk: {
+            \\    @setEvalBranchQuota((1 << 32) - 1);
+            \\    const module = get(kind);
+            \\
+            \\    if (@typeInfo(@TypeOf(module)) == .@"fn") break :blk null;
+            \\
+            \\    var length: comptime_int = 0;
+            \\
+            \\    for (std.meta.fields(Kind)) |entry| {
+            \\        const value = get(@enumFromInt(entry.value));
+            \\        if (@typeInfo(@TypeOf(value)) == .@"fn" and std.mem.indexOf(u8, entry.name, @tagName(kind)) != null) {
+            \\            length += 1;
+            \\        }
+            \\    }
+            \\
+            \\    break :blk [length]template.Variant(module.key, T);
+            \\} {
+            \\    @setEvalBranchQuota((1 << 32) - 1);
+            \\    const module = get(kind);
+            \\
+            \\    if (@typeInfo(@TypeOf(module)) == .@"fn") return &.{};
+            \\
+            \\    var result: [std.meta.fields(Kind).len]template.Variant(module.key, T) = undefined;
+            \\    var length: comptime_int = 0;
+            \\
+            \\    inline for (std.meta.fields(Kind)) |entry| {
+            \\        const value = get(@enumFromInt(entry.value));
+            \\        if (@typeInfo(@TypeOf(value)) == .@"fn" and std.mem.indexOf(u8, entry.name, @tagName(kind)) != null) {
+            \\            result[length] = value(T);
+            \\            length += 1;
+            \\        }
+            \\    }
+            \\
+            \\    const slice = result[0..length];
+            \\
+            \\    std.mem.sort(
+            \\        template.Variant(module.key, T),
+            \\        slice,
+            \\        {},
+            \\        struct {
+            \\            fn sort(context: @TypeOf({}), lhs: template.Variant(module.key, T), rhs: template.Variant(module.key, T)) bool {
+            \\                _ = context;
+            \\                return lhs.score < rhs.score;
+            \\            }
+            \\        }.sort,
+            \\    );
+            \\
+            \\    return slice.*;
+            \\}
             ,
         },
     );
@@ -176,6 +226,7 @@ fn submodules(b: *std.Build, root: *std.Build.Module, entry: std.fs.Dir.Entry, d
         if (subentry.kind == .directory) try submodules(b, module, subentry, dir_path, run_module_tests);
         if (subentry.kind != .file) continue;
         if (std.mem.indexOf(u8, entry.name, ".zig") != entry.name.len - 4) continue;
+        if (std.mem.indexOf(u8, entry.name, "._") == 0) continue;
 
         const path = b.pathJoin(&.{ dir_path, subentry.name });
         const submodule_name = blk: {
@@ -264,6 +315,7 @@ pub fn generate(
     while (try walker.next()) |entry| {
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, ".zig")) continue;
+        if (std.mem.indexOf(u8, entry.basename, "._") == 0) continue;
 
         const path = try std.mem.replaceOwned(u8, b.allocator, entry.path, "\\", "/");
 

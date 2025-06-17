@@ -29,6 +29,8 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
         }
 
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+            const I = @Type(.{ .int = .{ .bits = @bitSizeOf(T), .signedness = .unsigned } });
+
             const a, const b = .{ bindings.get(.a).?.number, bindings.get(.b).?.number };
             var steps = try std.ArrayList(*const Step(T)).initCapacity(allocator, 4);
 
@@ -36,7 +38,7 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
             // Let c be equal to the whole part of a and d be equal to the fractional part of a.
             // (c + d) * b = bc + bd <=> c + d = a
             const c = @divFloor(a, 1.0);
-            const d = @rem(a, 1.0);
+            const d = a - c;
 
             try steps.append(try (Step(T){
                 .before = try expression.clone(allocator),
@@ -123,19 +125,19 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
 
                             // shift
                             const b_len = b_len_blk: {
-                                const truncated: usize = @intFromFloat(@trunc(b));
+                                const truncated: I = @intFromFloat(@trunc(b));
 
-                                var i: usize = 0;
-                                while (try std.math.powi(usize, 10, i) <= truncated) : (i += 1) {}
+                                var i: I = 0;
+                                while (try std.math.powi(I, 10, i) <= truncated) : (i += 1) {}
 
                                 break :b_len_blk i;
                             };
-                            const shift = (b_len + d_str[2..].len);
+                            const shift: I = @intCast(b_len + d_str[2..].len);
 
                             float_integer_steps[1] = try (Step(T){
                                 .before = try float_integer_steps[0].after.?.clone(allocator),
                                 .after = try (Expression(T){
-                                    .number = multiplied / @as(T, @floatFromInt(try std.math.powi(usize, 10, shift - 1))),
+                                    .number = multiplied / @as(T, @floatFromInt(try std.math.powi(I, 10, shift - 1))),
                                 }).clone(allocator),
                                 .description = try std.fmt.allocPrint(allocator, "Move the decimal point left by {d} place(-s)", .{shift - 1}),
                                 .substeps = try allocator.alloc(*const Step(T), 0),
@@ -173,6 +175,7 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
         .name = "Number multiplication: float × integer",
         .matches = Impl.matches,
         .solve = Impl.solve,
+        .score = 4,
     };
 }
 

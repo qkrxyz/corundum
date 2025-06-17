@@ -44,6 +44,7 @@ pub fn @"int, int"(comptime T: type) Variant(Key, T) {
         .name = "Number multiplication: integer × integer",
         .matches = Impl.matches,
         .solve = Impl.solve,
+        .score = 5,
     };
 }
 
