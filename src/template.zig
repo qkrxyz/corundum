@@ -51,7 +51,7 @@ pub fn Bindings(comptime Key: type, T: type) type {
 pub fn Template(comptime Key: type, comptime T: type) type {
     switch (T) {
         f16, f32, f64, f128 => {},
-        else => @compileError("cannot use type " ++ @typeName(T) ++ " as a generic argument for `Expression`"),
+        else => @compileError("cannot use type " ++ @typeName(T) ++ " as a generic argument for `Template`"),
     }
 
     return union(Kind) {
@@ -82,6 +82,7 @@ pub fn Template(comptime Key: type, comptime T: type) type {
             ast: Expression(T),
             matches: fn (*const Expression(T)) anyerror!Bindings(Key, T),
             solve: fn (*const Expression(T), Bindings(Key, T), std.mem.Allocator) anyerror!Solution(T),
+            variants: []Variant(Key, T),
         },
 
         /// A dynamic template that doesn't have a concrete representation.
@@ -98,6 +99,7 @@ pub fn Template(comptime Key: type, comptime T: type) type {
             name: []const u8,
             matches: fn (*const Expression(T)) anyerror!Bindings(Key, T),
             solve: fn (Bindings(Key, T), std.mem.Allocator) anyerror!Solution(T),
+            variants: []Variant(Key, T),
         },
     };
 }
@@ -110,3 +112,4 @@ pub const Templates = @import("templates").templates;
 const Expression = expr.Expression;
 pub const Solution = @import("template/solution").Solution;
 pub const Step = @import("template/step").Step;
+pub const Variant = @import("template/variant").Variant;

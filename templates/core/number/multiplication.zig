@@ -6,134 +6,194 @@ pub const Key = enum {
 pub fn multiplication(comptime T: type) Template(Key, T) {
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            const number = comptime template.Templates(T).get("core/number/number");
+            const number = comptime template.Templates.get(.@"core/number/number").module(T);
             var bindings = Bindings(Key, T).init(.{});
 
-            _ = try number.module.structure.matches(expression.binary.left);
+            _ = try number.structure.matches(expression.binary.left);
             bindings.put(.a, expression.binary.left);
 
-            _ = try number.module.structure.matches(expression.binary.right);
+            _ = try number.structure.matches(expression.binary.right);
             bindings.put(.b, expression.binary.right);
 
             return bindings;
         }
 
+        // generic solver
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             const a = bindings.get(.a).?.number;
             const b = bindings.get(.b).?.number;
 
-            const is_a_integer = @rem(a, 1.0) == 0.0;
-            const is_b_integer = @rem(b, 1.0) == 0.0;
+            // Let c be equal to the whole part of a and d be equal to the fractional part of a.
+            // Let e be equal to the whole part of b and f be equal to the fractional part of b.
+            //
+            // (c + d) * (e + f) = ce + cf + de + df <=> c + d = a and e + f = b
+            var steps = try std.ArrayList(*const Step(T)).initCapacity(allocator, 4);
 
-            // MARK: a * b; a, b ∈ Z
-            if (is_a_integer and is_b_integer) {
-                const solution = try Solution(T).init(1, allocator);
+            // c, d
+            const c = @divFloor(a, 1.0);
+            const d = @rem(a, 1.0);
 
-                solution.steps[0] = try (Step(T){
-                    .before = try expression.clone(allocator),
-                    .after = try (Expression(T){ .number = a * b }).clone(allocator),
-                    .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ a, b }),
-                    .substeps = try allocator.alloc(*const Step(T), 0),
-                }).clone(allocator);
+            // e, f
+            const e = @divFloor(b, 1.0);
+            const f = @rem(b, 1.0);
 
-                return solution;
-            }
+            // expand
+            try steps.append(try (Step(T){
+                .before = try expression.clone(allocator),
 
-            // MARK: a * b; a ∈ Z or b ∈ Z
-            if (is_a_integer or is_b_integer and !(is_a_integer and is_b_integer)) {
-                var steps = try std.ArrayList(*const Step(T)).initCapacity(allocator, 4);
-
-                // Here, a is the floating-point number.
-                // Let c be equal to the whole part of a and d be equal to the fractional part of a.
-                // (c + d) * b = bc + bd <=> c + d = a
-                const not_integer, const integer = if (is_a_integer) .{ b, a } else .{ a, b };
-
-                const c = @divFloor(not_integer, 1.0);
-                const d = @rem(not_integer, 1.0);
-
-                try steps.append(try (Step(T){
-                    .before = try expression.clone(allocator),
-                    .after = try (Expression(T){ .binary = .{
+                // ce + cf + de + df
+                .after = try (Expression(T){
+                    .binary = .{
                         .operation = .addition,
-                        .left = &.{ .binary = .{
-                            .operation = .multiplication,
-                            .left = &.{ .number = integer },
-                            .right = &.{ .number = c },
-                        } },
+                        // ce + cf + de
+                        .left = &.{
+                            .binary = .{
+                                .operation = .addition,
+                                // ce + cf
+                                .left = &.{
+                                    .binary = .{
+                                        .operation = .addition,
+                                        // ce
+                                        .left = &.{ .binary = .{
+                                            .operation = .multiplication,
+                                            .left = &.{ .number = c },
+                                            .right = &.{ .number = e },
+                                        } },
+
+                                        // cf
+                                        .right = &.{ .binary = .{
+                                            .operation = .multiplication,
+                                            .left = &.{ .number = c },
+                                            .right = &.{ .number = f },
+                                        } },
+                                    },
+                                },
+
+                                // de
+                                .right = &.{ .binary = .{
+                                    .operation = .multiplication,
+                                    .left = &.{ .number = d },
+                                    .right = &.{ .number = e },
+                                } },
+                            },
+                        },
+
+                        // df
                         .right = &.{ .binary = .{
                             .operation = .multiplication,
-                            .left = &.{ .number = integer },
-                            .right = &.{ .number = d },
+                            .left = &.{ .number = d },
+                            .right = &.{ .number = f },
                         } },
-                    } }).clone(allocator),
-                    .description = try allocator.dupe(u8, "Expand\n\nWe can rewrite $a * b$ as $b * c + b * d = bc + bd$, where $c$ is the whole part of $a$ and $d$ is the fractional part."),
-                    .substeps = try allocator.alloc(*const Step(T), 0),
-                }).clone(allocator));
-
-                // simplify
-                const bc = b * c;
-                const bd = b * d;
-
-                try steps.append(try (Step(T){
-                    .before = try steps.items[0].after.?.clone(allocator),
-                    .after = try (Expression(T){ .binary = .{
-                        .operation = .addition,
-                        .left = &.{ .number = bc },
-                        .right = &.{ .number = bd },
-                    } }).clone(allocator),
-
-                    .description = try allocator.dupe(u8, "Simplify"),
-
-                    .substeps = blk: {
-                        const substeps = try allocator.alloc(*const Step(T), 2);
-
-                        substeps[0] = try (Step(T){
-                            .before = try (Expression(T){ .binary = .{
-                                .operation = .multiplication,
-                                .left = &.{ .number = b },
-                                .right = &.{ .number = c },
-                            } }).clone(allocator),
-                            .after = try (Expression(T){ .number = bc }).clone(allocator),
-                            .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ b, c }),
-                            .substeps = try allocator.alloc(*const Step(T), 0),
-                        }).clone(allocator);
-
-                        substeps[1] = try (Step(T){
-                            .before = try (Expression(T){ .binary = .{
-                                .operation = .multiplication,
-                                .left = &.{ .number = b },
-                                .right = &.{ .number = d },
-                            } }).clone(allocator),
-                            .after = try (Expression(T){ .number = bd }).clone(allocator),
-                            .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ b, d }),
-                            .substeps = try allocator.alloc(*const Step(T), 0),
-                        }).clone(allocator);
-
-                        break :blk substeps;
                     },
-                }).clone(allocator));
+                }).clone(allocator),
 
-                // add
-                const addition = template.Templates(T).get("core/number/addition");
-                const new_bindings = Bindings(addition.key, T).init(.{
-                    .a = steps.items[1].after.?.binary.left,
-                    .b = steps.items[1].after.?.binary.right,
-                });
+                .description = try allocator.dupe(u8,
+                    \\Expand
+                    \\
+                    \\We can rewrite $a$ as $c + d$, where $c$ is the whole part of $a$ and $d$ is the fractional part.
+                    \\We can also rewrite $b$ as $e + f$, where $e$ is the whole part of $b$ and $f$ is the fractional part.
+                    \\This gives us $a * b = (c + d) * (e + f) = ce + cf + de + df$.
+                ),
 
-                const addition_result = try addition.module.structure.solve(steps.items[1].after.?, new_bindings, allocator);
-                defer allocator.free(addition_result.steps);
+                .substeps = try allocator.alloc(*const Step(T), 0),
+            }).clone(allocator));
 
-                for (addition_result.steps) |step| {
-                    try steps.append(step);
-                }
+            // simplify
+            const ce = c * e;
+            const cf = c * f;
+            const de = d * e;
+            const df = d * f;
 
-                return Solution(T){
-                    .steps = try steps.toOwnedSlice(),
-                };
-            }
+            try steps.append(try (Step(T){
+                .before = try steps.items[0].after.?.clone(allocator),
+                .after = try (Expression(T){ .binary = .{
+                    .operation = .addition,
+                    .left = &.{ .binary = .{
+                        .operation = .addition,
+                        .left = &.{ .binary = .{
+                            .operation = .addition,
+                            .left = &.{ .number = ce },
+                            .right = &.{ .number = cf },
+                        } },
+                        .right = &.{ .number = de },
+                    } },
+                    .right = &.{ .number = df },
+                } }).clone(allocator),
 
-            // TODO float * float
-            unreachable;
+                .description = try allocator.dupe(u8, "Simplify"),
+
+                .substeps = blk: {
+                    var substeps = try allocator.alloc(*const Step(T), 4);
+
+                    // always integer * integer
+                    substeps[0] = try (Step(T){
+                        .before = try steps.items[0].after.?.binary.left.binary.left.binary.left.clone(allocator),
+                        .after = try (Expression(T){ .number = ce }).clone(allocator),
+                        .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ c, e }),
+                        .substeps = try allocator.alloc(*const Step(T), 0),
+                    }).clone(allocator);
+
+                    // always integer * small float (x2)
+                    const small_float_int = template.Templates.get(.@"core/number/multiplication/small float, int");
+
+                    substeps[1] = try (Step(T){
+                        .before = try steps.items[0].after.?.binary.left.binary.left.binary.right.clone(allocator),
+                        .after = try (Expression(T){ .number = cf }).clone(allocator),
+                        .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ c, f }),
+                        .substeps = (try small_float_int(T).solve(
+                            steps.items[0].after.?.binary.left.binary.left.binary.right,
+                            Bindings(Key, T).init(.{
+                                .a = steps.items[0].after.?.binary.left.binary.left.binary.right.binary.right,
+                                .b = steps.items[0].after.?.binary.left.binary.left.binary.right.binary.left,
+                            }),
+                            allocator,
+                        )).steps,
+                    }).clone(allocator);
+
+                    substeps[2] = try (Step(T){
+                        .before = try steps.items[0].after.?.binary.left.binary.right.clone(allocator),
+                        .after = try (Expression(T){ .number = de }).clone(allocator),
+                        .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ d, e }),
+                        .substeps = (try small_float_int(T).solve(
+                            steps.items[0].after.?.binary.left.binary.right,
+                            Bindings(Key, T).init(.{
+                                .a = steps.items[0].after.?.binary.left.binary.right.binary.left,
+                                .b = steps.items[0].after.?.binary.left.binary.right.binary.right,
+                            }),
+                            allocator,
+                        )).steps,
+                    }).clone(allocator);
+
+                    // always small float * small float
+                    const small_floats = template.Templates.get(.@"core/number/multiplication/small float, small float");
+
+                    substeps[3] = try (Step(T){
+                        .before = try steps.items[0].after.?.binary.right.clone(allocator),
+                        .after = try (Expression(T){ .number = df }).clone(allocator),
+                        .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ d, f }),
+                        .substeps = (try small_floats(T).solve(
+                            steps.items[0].after.?.binary.right,
+                            Bindings(Key, T).init(.{
+                                .a = steps.items[0].after.?.binary.right.binary.left,
+                                .b = steps.items[0].after.?.binary.right.binary.right,
+                            }),
+                            allocator,
+                        )).steps,
+                    }).clone(allocator);
+
+                    break :blk substeps;
+                },
+            }).clone(allocator));
+
+            // add
+            try steps.append(try (Step(T){
+                .before = try steps.items[1].after.?.clone(allocator),
+                .after = try (Expression(T){ .number = ce + cf + de + df }).clone(allocator),
+                .description = try std.fmt.allocPrint(allocator, "Add {d}, {d}, {d} and {d} together", .{ ce, cf, de, df }),
+                .substeps = try allocator.alloc(*const Step(T), 0),
+            }).clone(allocator));
+
+            return Solution(T){ .steps = try steps.toOwnedSlice() };
         }
     };
 
@@ -149,6 +209,12 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
             },
             .matches = Impl.matches,
             .solve = Impl.solve,
+            .variants = @constCast(&[_]Variant(Key, T){
+                template.Templates.get(.@"core/number/multiplication/small float, small float")(T),
+                template.Templates.get(.@"core/number/multiplication/small float, int")(T),
+                template.Templates.get(.@"core/number/multiplication/float, int")(T),
+                template.Templates.get(.@"core/number/multiplication/int, int")(T),
+            }),
         },
     };
 }
@@ -162,6 +228,8 @@ test multiplication {
     } };
 
     try testing.expect(Multiplication.structure.ast.structural() == two_minus_one.structural());
+
+    _ = template.Templates.templates();
 }
 
 test "multiplication(T).matches" {
@@ -190,127 +258,40 @@ test "multiplication(T).matches" {
 test "multiplication(T).solve" {
     const Multiplication = multiplication(f64);
 
-    const two_times_three = Expression(f64){ .binary = .{
+    const expression = Expression(f64){ .binary = .{
         .operation = .multiplication,
-        .left = &.{ .number = 2.0 },
-        .right = &.{ .number = 3.0 },
+        .left = &.{ .number = 4.5 },
+        .right = &.{ .number = 1.5 },
     } };
 
-    const bindings = try Multiplication.structure.matches(&two_times_three);
-    const solution = try Multiplication.structure.solve(&two_times_three, bindings, testing.allocator);
+    const bindings = try Multiplication.structure.matches(&expression);
+    const solution = try Multiplication.structure.solve(&expression, bindings, testing.allocator);
     defer solution.deinit(testing.allocator);
 
-    const expected = Solution(f64){
-        .steps = @constCast(&[_]*const Step(f64){
-            &.{
-                .before = &two_times_three,
-                .after = &.{ .number = 6.0 },
-                .description = "Multiply 2 by 3",
-                .substeps = &.{},
-            },
-        }),
-    };
+    const stderr = std.io.getStdErr().writer();
+    for (solution.steps, 0..) |step, i| {
+        std.debug.print("#{d}. ", .{i + 1});
+        try std.zon.stringify.serializeArbitraryDepth(step.before, .{ .whitespace = false }, stderr);
+        std.debug.print(" -> ", .{});
+        try std.zon.stringify.serializeArbitraryDepth(step.after.?, .{ .whitespace = false }, stderr);
+        std.debug.print(" ('{s}')\n", .{step.description});
 
-    try testing.expectEqualDeep(expected, solution);
-}
+        for (step.substeps, 0..) |substep, j| {
+            std.debug.print("\t#{d}.{d} ", .{ i + 1, j + 1 });
+            try std.zon.stringify.serializeArbitraryDepth(substep.before, .{ .whitespace = false }, stderr);
+            std.debug.print(" -> ", .{});
+            try std.zon.stringify.serializeArbitraryDepth(substep.after.?, .{ .whitespace = false }, stderr);
+            std.debug.print(" ('{s}')\n", .{substep.description});
 
-test "multiplication(T).solve - a * b, a ∉ Z" {
-    const Multiplication = multiplication(f64);
-
-    const three_halves_times_two = Expression(f64){ .binary = .{
-        .operation = .multiplication,
-        .left = &.{ .number = 1.5 },
-        .right = &.{ .number = 2.0 },
-    } };
-
-    const bindings = try Multiplication.structure.matches(&three_halves_times_two);
-    const solution = try Multiplication.structure.solve(&three_halves_times_two, bindings, testing.allocator);
-    defer solution.deinit(testing.allocator);
-
-    const expected = Solution(f64){
-        .steps = @constCast(&[_]*const Step(f64){
-            // step 1: rewrite
-            &.{
-                .before = &three_halves_times_two,
-                .after = &.{ .binary = .{
-                    .operation = .addition,
-                    .left = &.{ .binary = .{
-                        .operation = .multiplication,
-                        .left = &.{ .number = 2.0 },
-                        .right = &.{ .number = 1.0 },
-                    } },
-                    .right = &.{ .binary = .{
-                        .operation = .multiplication,
-                        .left = &.{ .number = 2.0 },
-                        .right = &.{ .number = 0.5 },
-                    } },
-                } },
-                .description = "Expand\n\nWe can rewrite $a * b$ as $b * c + b * d = bc + bd$, where $c$ is the whole part of $a$ and $d$ is the fractional part.",
-                .substeps = &.{},
-            },
-
-            // step 2: simplify
-            &.{
-                .before = &.{ .binary = .{
-                    .operation = .addition,
-                    .left = &.{ .binary = .{
-                        .operation = .multiplication,
-                        .left = &.{ .number = 2.0 },
-                        .right = &.{ .number = 1.0 },
-                    } },
-                    .right = &.{ .binary = .{
-                        .operation = .multiplication,
-                        .left = &.{ .number = 2.0 },
-                        .right = &.{ .number = 0.5 },
-                    } },
-                } },
-                .after = &.{ .binary = .{
-                    .operation = .addition,
-                    .left = &.{ .number = 2.0 },
-                    .right = &.{ .number = 1.0 },
-                } },
-                .description = "Simplify",
-                .substeps = @constCast(&[_]*const Step(f64){
-                    // [bc] + bd
-                    &.{
-                        .before = &.{ .binary = .{
-                            .operation = .multiplication,
-                            .left = &.{ .number = 2.0 },
-                            .right = &.{ .number = 1.0 },
-                        } },
-                        .after = &.{ .number = 2 },
-                        .description = "Multiply 2 by 1",
-                        .substeps = &.{},
-                    },
-                    // bc + [bd]
-                    &.{
-                        .before = &.{ .binary = .{
-                            .operation = .multiplication,
-                            .left = &.{ .number = 2.0 },
-                            .right = &.{ .number = 0.5 },
-                        } },
-                        .after = &.{ .number = 1 },
-                        .description = "Multiply 2 by 0.5",
-                        .substeps = &.{},
-                    },
-                }),
-            },
-
-            // step 3: add
-            &.{
-                .before = &.{ .binary = .{
-                    .operation = .addition,
-                    .left = &.{ .number = 2.0 },
-                    .right = &.{ .number = 1.0 },
-                } },
-                .after = &.{ .number = 3.0 },
-                .description = "Add 2 and 1 together",
-                .substeps = &.{},
-            },
-        }),
-    };
-
-    try testing.expectEqualDeep(expected, solution);
+            for (substep.substeps, 0..) |subsubstep, k| {
+                std.debug.print("\t\t#{d}.{d}.{d} ", .{ i + 1, j + 1, k + 1 });
+                try std.zon.stringify.serializeArbitraryDepth(subsubstep.before, .{ .whitespace = false }, stderr);
+                std.debug.print(" -> ", .{});
+                try std.zon.stringify.serializeArbitraryDepth(subsubstep.after.?, .{ .whitespace = false }, stderr);
+                std.debug.print(" ('{s}')\n", .{subsubstep.description});
+            }
+        }
+    }
 }
 
 const std = @import("std");
@@ -321,6 +302,7 @@ const template = @import("template");
 
 const Expression = expr.Expression;
 const Template = template.Template;
+const Variant = template.Variant;
 const Solution = template.Solution;
 const Step = template.Step;
 const Bindings = template.Bindings;

@@ -6,13 +6,13 @@ pub const Key = enum {
 pub fn subtraction(comptime T: type) Template(Key, T) {
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            const number = comptime template.Templates(T).get("core/number/number");
+            const number = comptime template.Templates.get(.@"core/number/number").module(T);
             var bindings = Bindings(Key, T).init(.{});
 
-            _ = try number.module.structure.matches(expression.binary.left);
+            _ = try number.structure.matches(expression.binary.left);
             bindings.put(.a, expression.binary.left);
 
-            _ = try number.module.structure.matches(expression.binary.right);
+            _ = try number.structure.matches(expression.binary.right);
             bindings.put(.b, expression.binary.right);
 
             return bindings;
@@ -37,7 +37,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
             }
 
             // MARK: ±a - (-b) = ±a + b
-            const addition = template.Templates(T).get("core/number/addition");
+            const addition = template.Templates.get(.@"core/number/addition");
             const solution = try Solution(T).init(2, allocator);
 
             const new_bindings = Bindings(addition.key, T).init(.{
@@ -60,7 +60,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
             }).clone(allocator);
 
             // subtract
-            const addition_result = try addition.module.structure.solve(solution.steps[0].after.?, new_bindings, allocator);
+            const addition_result = try addition.module(T).structure.solve(solution.steps[0].after.?, new_bindings, allocator);
             defer allocator.free(addition_result.steps);
 
             solution.steps[1] = addition_result.steps[0];
@@ -81,6 +81,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
             },
             .matches = Impl.matches,
             .solve = Impl.solve,
+            .variants = &.{},
         },
     };
 }

@@ -36,6 +36,53 @@ pub fn build(b: *std.Build) !void {
             .type_name = "template.Template(T)",
             .file_path = "all_templates.zig",
             .parent_name = "template",
+            .get_code =
+            \\pub inline fn get(comptime name: Kind) blk: {
+            \\    if (inner.get(name)) |module| {
+            \\        if (@hasDecl(module, "Key")) {
+            \\            break :blk struct {
+            \\                key: @TypeOf(@field(module, "Key")),
+            \\                module: @TypeOf(@field(module, std.enums.tagName(Kind, name).?[std.mem.lastIndexOf(u8, std.enums.tagName(Kind, name).?, "/").? + 1 ..])),
+            \\            };
+            \\        } else {
+            \\            break :blk @TypeOf(@field(module, std.enums.tagName(Kind, name).?[std.mem.lastIndexOf(u8, std.enums.tagName(Kind, name).?, "/").? + 1 ..]));
+            \\        }
+            \\    } else {
+            \\        break :blk null;
+            \\    }
+            \\} {
+            \\    if (inner.get(name)) |module| {
+            \\        if(@hasDecl(module, "Key")) {
+            \\            return .{
+            \\                .key = @field(module, "Key"),
+            \\                .module = @field(module, std.enums.tagName(Kind, name).?[std.mem.lastIndexOf(u8, std.enums.tagName(Kind, name).?, "/").? + 1 ..]),
+            \\            };
+            \\        } else {
+            \\            return @field(module, std.enums.tagName(Kind, name).?[std.mem.lastIndexOf(u8, std.enums.tagName(Kind, name).?, "/").? + 1 ..]);
+            \\        }
+            \\    }
+            \\}
+            \\
+            ,
+            .additional_code =
+            \\pub inline fn templates() []Kind {
+            \\    comptime return blk: {
+            \\        @setEvalBranchQuota((1 << 32) - 1);
+            \\        var kinds: [std.meta.fields(Kind).len]Kind = undefined;
+            \\        var length: comptime_int = 0;
+            \\
+            \\        for (std.meta.fields(Kind)) |entry| {
+            \\            const value = get(@enumFromInt(entry.value));
+            \\            if (@typeInfo(@TypeOf(value)) == .@"struct") {
+            \\                kinds[length] = @enumFromInt(entry.value);
+            \\                length += 1;
+            \\            }
+            \\        }
+            \\
+            \\        break :blk kinds[0..length];
+            \\    };
+            \\}
+            ,
         },
     );
 
@@ -176,6 +223,12 @@ pub fn generate(
 
         /// The parent module name to expose this module to. This module must already exist in `root.import_table`.
         parent_name: []const u8,
+
+        /// Code for the `.get` function.
+        get_code: []const u8,
+
+        /// Additional code.
+        additional_code: []const u8,
     },
 ) !void {
     var generated = std.ArrayList(u8).init(b.allocator);
@@ -185,11 +238,10 @@ pub fn generate(
         \\const std = @import("std");
         \\const {s} = @import("{s}");
         \\
-        \\pub fn {s}(comptime T: type) type {{
-        \\    return struct {{
-        \\        const Self = @This();
+        \\pub const {s} = struct {{
+        \\    const Self = @This();
         \\
-        \\        const inner: std.StaticStringMap(type) = .initComptime(.{{
+        \\    const inner: std.EnumMap(Kind, type) = .init(.{{
         \\
     , .{
         options.parent_name,
@@ -222,32 +274,34 @@ pub fn generate(
         };
         try files.append(info);
 
-        try generated.appendSlice(b.fmt("            .{{ \"{s}\", @import(\"{s}\") }},\n", .{ info.name, info.name }));
+        if (info.basename[0] != '_') {
+            try generated.appendSlice(b.fmt("        .@\"{s}\" = @import(\"{s}\"),\n", .{ info.name, info.name }));
+        }
     }
 
     try generated.appendSlice(
-        \\        });
+        \\    });
         \\
-        \\        pub inline fn get(comptime name: []const u8) blk: {
-        \\            if (inner.get(name)) |module| {
-        \\                break :blk struct {
-        \\                    key: @TypeOf(@field(module, "Key")),
-        \\                    module: @TypeOf(@field(module, name[std.mem.lastIndexOf(u8, name, "/").? + 1 ..])(T)),
-        \\                };
-        \\            } else {
-        \\                break :blk null;
-        \\            }
-        \\        } {
-        \\            if (inner.get(name)) |module| {
-        \\                return .{
-        \\                    .key = @field(module, "Key"),
-        \\                    .module = @field(module, name[std.mem.lastIndexOf(u8, name, "/").? + 1 ..])(T),
-        \\                };
-        \\            }
-        \\        }
-        \\    };
-        \\}
     );
+
+    try generated.appendSlice(options.get_code);
+    try generated.appendSlice(options.additional_code);
+
+    try generated.appendSlice(
+        \\
+        \\};
+        \\
+        \\pub const Kind = enum {
+        \\
+    );
+
+    for (files.items) |info| {
+        if (info.basename[0] != '_') {
+            try generated.appendSlice(b.fmt("    @\"{s}\",\n", .{info.name}));
+        }
+    }
+
+    try generated.appendSlice("};\n");
 
     const wf = b.addWriteFile(
         options.file_path,

@@ -39,6 +39,7 @@ pub fn number(comptime T: type) Template(Key, T) {
             .ast = Expression(T){ .templated = .number },
             .matches = Impl.matches,
             .solve = Impl.solve,
+            .variants = &.{},
         },
     };
 }

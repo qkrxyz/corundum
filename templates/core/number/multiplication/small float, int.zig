@@ -1,0 +1,170 @@
+const Key = template.Templates.get(.@"core/number/multiplication").key;
+
+pub fn @"small float, int"(comptime T: type) Variant(Key, T) {
+    const Impl = struct {
+        fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
+            const number = comptime template.Templates.get(.@"core/number/number").module(T);
+            var bindings = Bindings(Key, T).init(.{});
+
+            _ = try number.structure.matches(expression.binary.left);
+            _ = try number.structure.matches(expression.binary.right);
+
+            const is_a_integer = @rem(expression.binary.left.number, 1.0) == 0.0;
+            const is_b_integer = @rem(expression.binary.right.number, 1.0) == 0.0;
+
+            if (is_a_integer == is_b_integer) {
+                return error.NoFloatAndInt;
+            }
+
+            // In bindings, `a` is the floating-point number.
+            if (is_a_integer) {
+                bindings.put(.a, expression.binary.right);
+                bindings.put(.b, expression.binary.left);
+            } else {
+                bindings.put(.a, expression.binary.left);
+                bindings.put(.b, expression.binary.right);
+            }
+
+            if (@abs(bindings.get(.a).?.number) > 1.0) {
+                return error.NotSmallEnough;
+            }
+
+            return bindings;
+        }
+
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+            const a, const b = .{ bindings.get(.a).?.number, bindings.get(.b).?.number };
+            var steps = try std.ArrayList(*const Step(T)).initCapacity(allocator, 2);
+
+            // reinterpret d as integer; multiply
+            const a_str = try std.fmt.allocPrint(allocator, "{d}", .{a});
+            defer allocator.free(a_str);
+
+            const a_int = try std.fmt.parseFloat(T, a_str[2..]);
+            const multiplied = a_int * b;
+
+            try steps.append(try (Step(T){
+                .before = try expression.clone(allocator),
+                .after = try (Expression(T){ .number = multiplied }).clone(allocator),
+
+                .description = try std.fmt.allocPrint(allocator, "Multiply the fractional part of {d} (as if it was an integer) with {d}", .{ a, b }),
+                .substeps = try allocator.alloc(*const Step(T), 0),
+            }).clone(allocator));
+
+            // shift
+            const b_len = b_len_blk: {
+                const truncated: usize = @intFromFloat(@trunc(b));
+
+                var i: usize = 0;
+                while (try std.math.powi(usize, 10, i) <= truncated) : (i += 1) {}
+
+                break :b_len_blk i;
+            };
+            const shift = (b_len + a_str[2..].len);
+
+            try steps.append(try (Step(T){
+                .before = try steps.items[0].after.?.clone(allocator),
+                .after = try (Expression(T){
+                    .number = multiplied / @as(T, @floatFromInt(try std.math.powi(usize, 10, shift - 1))),
+                }).clone(allocator),
+                .description = try std.fmt.allocPrint(allocator, "Move the decimal point left by {d} place(-s)", .{shift - 1}),
+                .substeps = try allocator.alloc(*const Step(T), 0),
+            }).clone(allocator));
+
+            return Solution(T){
+                .steps = try steps.toOwnedSlice(),
+            };
+        }
+    };
+
+    return Variant(Key, T){
+        .name = "Number multiplication: small float × integer",
+        .matches = Impl.matches,
+        .solve = Impl.solve,
+    };
+}
+
+test "small float, int(T).matches" {
+    const Multiplication = @"small float, int"(f64);
+
+    const two_times_three = Expression(f64){ .binary = .{
+        .operation = .multiplication,
+        .left = &.{ .number = 2.0 },
+        .right = &.{ .number = 3.0 },
+    } };
+
+    const half_of_ten = Expression(f64){ .binary = .{
+        .operation = .multiplication,
+        .left = &.{ .number = 0.5 },
+        .right = &.{ .number = 10.0 },
+    } };
+
+    const three_halves_of_two = Expression(f64){ .binary = .{
+        .operation = .multiplication,
+        .left = &.{ .number = 1.5 },
+        .right = &.{ .number = 2.0 },
+    } };
+
+    const half_of_quarter = Expression(f64){ .binary = .{
+        .operation = .multiplication,
+        .left = &.{ .number = 0.5 },
+        .right = &.{ .number = 0.25 },
+    } };
+
+    try testing.expectEqual(Bindings(Key, f64).init(.{
+        .a = half_of_ten.binary.left,
+        .b = half_of_ten.binary.right,
+    }), Multiplication.matches(&half_of_ten));
+
+    try testing.expectError(error.NoFloatAndInt, Multiplication.matches(&two_times_three));
+    try testing.expectError(error.NoFloatAndInt, Multiplication.matches(&half_of_quarter));
+    try testing.expectError(error.NotSmallEnough, Multiplication.matches(&three_halves_of_two));
+}
+
+test "small float, int(T).solve" {
+    const Multiplication = @"small float, int"(f64);
+
+    const half_of_three = Expression(f64){ .binary = .{
+        .operation = .multiplication,
+        .left = &.{ .number = 0.5 },
+        .right = &.{ .number = 3.0 },
+    } };
+
+    const bindings = try Multiplication.matches(&half_of_three);
+    const solution = try Multiplication.solve(&half_of_three, bindings, testing.allocator);
+    defer solution.deinit(testing.allocator);
+
+    const expected = Solution(f64){
+        .steps = @constCast(&[_]*const Step(f64){
+            // step 1: reinterpret; multiply
+            &.{
+                .before = &half_of_three,
+                .after = &.{ .number = 15.0 },
+                .description = "Multiply the fractional part of 0.5 (as if it was an integer) with 3",
+                .substeps = &.{},
+            },
+
+            // step 2: shift
+            &.{
+                .before = &.{ .number = 15.0 },
+                .after = &.{ .number = 1.5 },
+                .description = "Move the decimal point left by 1 place(-s)",
+                .substeps = &.{},
+            },
+        }),
+    };
+
+    try testing.expectEqualDeep(expected, solution);
+}
+
+const std = @import("std");
+const testing = std.testing;
+
+const expr = @import("expr");
+const template = @import("template");
+
+const Expression = expr.Expression;
+const Variant = template.Variant;
+const Solution = template.Solution;
+const Step = template.Step;
+const Bindings = template.Bindings;
