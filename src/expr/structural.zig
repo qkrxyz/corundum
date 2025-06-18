@@ -41,6 +41,7 @@ pub fn structural(comptime T: type, expression: *const Expression(T), hasher: an
             if (expression.function.body) |body| structural(T, body, hasher);
         },
         .templated => unreachable,
+        .parenthesis => |inner| structural(T, inner, hasher),
     }
 }
 
@@ -319,6 +320,44 @@ test "structural(templated)" {
     try std.testing.expectEqual(expected, result);
     try std.testing.expectEqual(expected, result2);
     try std.testing.expectEqual(result, result2);
+}
+
+test "structural(parenthesis)" {
+    const one_plus_two = Expression(f64){ .binary = .{
+        .left = &.{ .number = 1.0 },
+        .operation = .addition,
+        .right = &.{ .number = 2.0 },
+    } };
+
+    const in_parens = Expression(f64){ .parenthesis = &.{
+        .binary = .{
+            .left = &.{ .number = 1.0 },
+            .operation = .addition,
+            .right = &.{ .number = 2.0 },
+        },
+    } };
+
+    var hasher = std.hash.XxHash64.init(0);
+    structural(f64, &one_plus_two, &hasher);
+    const result = hasher.final();
+
+    hasher = std.hash.XxHash64.init(0);
+    structural(f64, &in_parens, &hasher);
+    const result2 = hasher.final();
+
+    const expected = blk: {
+        hasher = std.hash.XxHash64.init(0);
+
+        hasher.update(&[_]u8{@intFromEnum(expr.Kind.binary)});
+        hasher.update(&[_]u8{@intFromEnum(expr.Kind.number)});
+        hasher.update(&[_]u8{@intFromEnum(expr.Kind.number)});
+        hasher.update(&[_]u8{@intFromEnum(expr.Expression(f64).BinaryOperation.addition)});
+
+        break :blk hasher.final();
+    };
+
+    try std.testing.expectEqual(expected, result);
+    try std.testing.expect(result != result2);
 }
 
 const std = @import("std");

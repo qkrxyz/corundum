@@ -39,6 +39,7 @@ pub fn hash(comptime T: type, expression: *const Expression(T), hasher: anytype)
             if (function.body) |body| hash(T, body, hasher);
         },
         .templated => |kind| @call(.always_inline, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(kind)} }),
+        .parenthesis => |inner| hash(T, inner, hasher),
     }
 }
 
@@ -255,6 +256,46 @@ test "hash(templated)" {
     };
 
     try testing.expectEqual(expected, result);
+}
+
+test "structural(parenthesis)" {
+    const one_plus_two = Expression(f64){ .binary = .{
+        .left = &.{ .number = 1.0 },
+        .operation = .addition,
+        .right = &.{ .number = 2.0 },
+    } };
+
+    const in_parens = Expression(f64){ .parenthesis = &.{
+        .binary = .{
+            .left = &.{ .number = 1.0 },
+            .operation = .addition,
+            .right = &.{ .number = 2.0 },
+        },
+    } };
+
+    var hasher = std.hash.XxHash64.init(0);
+    hash(f64, &one_plus_two, &hasher);
+    const result = hasher.final();
+
+    hasher = std.hash.XxHash64.init(0);
+    hash(f64, &in_parens, &hasher);
+    const result2 = hasher.final();
+
+    const expected = blk: {
+        hasher = std.hash.XxHash64.init(0);
+
+        hasher.update(&[_]u8{@intFromEnum(expr.Kind.binary)});
+        hasher.update(&[_]u8{@intFromEnum(expr.Kind.number)});
+        hasher.update(&std.mem.toBytes(@as(f64, 1.0)));
+        hasher.update(&[_]u8{@intFromEnum(expr.Kind.number)});
+        hasher.update(&std.mem.toBytes(@as(f64, 2.0)));
+        hasher.update(&[_]u8{@intFromEnum(expr.Expression(f64).BinaryOperation.addition)});
+
+        break :blk hasher.final();
+    };
+
+    try std.testing.expectEqual(expected, result);
+    try std.testing.expect(result != result2);
 }
 
 const std = @import("std");

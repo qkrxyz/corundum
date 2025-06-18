@@ -9,6 +9,7 @@ pub const Kind = enum {
     unary,
     function,
     templated,
+    parenthesis,
 };
 
 /// A mathematical expression, like `x`, `3.14` or `30°`.
@@ -67,6 +68,9 @@ pub fn Expression(T: type) type {
 
         /// Represents the expression kind this expression is a placeholder for.
         templated: Kind,
+
+        /// `(expr)`
+        parenthesis: *const Expression(T),
 
         pub const Sign = enum(u8) {
             /// `=`
@@ -171,6 +175,7 @@ pub fn Expression(T: type) type {
 
                     if (function.body) |body| body.deinit(allocator);
                 },
+                .parenthesis => |inner| inner.deinit(allocator),
             }
 
             allocator.destroy(self);

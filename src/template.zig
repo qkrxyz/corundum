@@ -38,8 +38,14 @@ pub const Kind = enum {
 ///     } },
 /// }
 /// ```
-pub fn Bindings(comptime Key: type, T: type) type {
-    return std.EnumMap(Key, *const Expression(T));
+pub fn Bindings(comptime Key: type, T: type) blk: {
+    if (@typeInfo(Key) == .@"enum") break :blk @TypeOf(std.EnumMap(Key, *const Expression(T)));
+
+    break :blk @TypeOf([]*const Expression(T));
+} {
+    if (@typeInfo(Key) == .@"enum") return std.EnumMap(Key, *const Expression(T));
+
+    return []*const Expression(T);
 }
 
 /// A mathematical template/identity that can be solved.
@@ -97,8 +103,8 @@ pub fn Template(comptime Key: type, comptime T: type) type {
         /// It gets matched by the engine according to the result of `matches`.
         dynamic: struct {
             name: []const u8,
-            matches: fn (*const Expression(T)) anyerror!Bindings(Key, T),
-            solve: fn (Bindings(Key, T), std.mem.Allocator) anyerror!Solution(T),
+            matches: if (@typeInfo(Key) != .@"enum") fn (*const Expression(T), std.mem.Allocator) anyerror!Bindings(Key, T) else fn (*const Expression(T)) anyerror!Bindings(Key, T),
+            solve: fn (*const Expression(T), Bindings(Key, T), std.mem.Allocator) anyerror!Solution(T),
             variants: []Variant(Key, T),
         },
     };

@@ -49,6 +49,10 @@ pub fn clone(comptime T: type, expression: *const Expression(T), allocator: std.
                 .body = if (function.body) |body| try clone(T, body, allocator) else null,
             },
         },
+
+        .parenthesis => |inner| Expression(T){
+            .parenthesis = try clone(T, inner, allocator),
+        },
     };
 
     return result;
