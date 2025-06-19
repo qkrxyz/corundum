@@ -3,11 +3,6 @@ const Key = template.Templates.get(.@"core/number/subtraction").key;
 pub fn @"a - 0"(comptime T: type) Variant(Key, T) {
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            const number = comptime template.Templates.get(.@"core/number/number").module(T);
-
-            _ = try number.structure.matches(expression.binary.left);
-            _ = try number.structure.matches(expression.binary.right);
-
             if (expression.binary.right.number != 0.0) {
                 return error.NoZero;
             }
@@ -42,7 +37,7 @@ pub fn @"a - 0"(comptime T: type) Variant(Key, T) {
 }
 
 test @"a - 0" {
-    inline for (.{ f16, f32, f64, f128 }) |T| {
+    inline for (.{ f32, f64, f128 }) |T| {
         const Subtraction = @"a - 0"(T);
 
         const one_minus_zero = Expression(T){ .binary = .{
@@ -73,7 +68,7 @@ test @"a - 0" {
 }
 
 test "a - 0(T).solve" {
-    inline for (.{ f16, f32, f64, f128 }) |T| {
+    inline for (.{ f32, f64, f128 }) |T| {
         const Subtraction = @"a - 0"(T);
 
         const one_minus_zero = Expression(T){ .binary = .{

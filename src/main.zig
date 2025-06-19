@@ -14,93 +14,86 @@ pub fn main() !void {
     defer if (is_debug) {
         _ = debug_allocator.deinit();
     };
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
 
-    var arguments = try std.process.argsWithAllocator(gpa);
-    defer arguments.deinit();
+    const allocator = arena.allocator();
 
-    var numbers: [2]f128 = undefined;
-    var i: usize = 0;
+    // benchmarks
+    const ITERATIONS = 10000;
+    var progress = std.Progress.start(.{ .estimated_total_items = ITERATIONS, .root_name = "Running benchmarks..." });
 
-    _ = arguments.skip();
-    while (arguments.next()) |value| {
-        numbers[i] = try std.fmt.parseFloat(f128, value);
-        i += 1;
+    var results: [ITERATIONS]u64 = undefined;
+    for (0..ITERATIONS) |i| {
+        var timer = try std.time.Timer.start();
+
+        try benchmark(allocator, 2.5, 3.5);
+
+        results[i] = timer.read();
+        progress.completeOne();
     }
 
-    // std.debug.print("addition\n-----\n", .{});
-    // {
-    //     const addition = corundum.template.Templates.get(.@"core/number/addition").module(f128);
-    //     const bindings = try addition.structure.matches(&corundum.expr.Expression(f128){
-    //         .binary = .{
-    //             .operation = .addition,
-    //             .left = &.{ .number = numbers[0] },
-    //             .right = &.{ .number = numbers[1] },
-    //         },
-    //     });
-    //     std.debug.print("bindings: {any}\n", .{bindings});
+    progress.end();
 
-    //     const solution = try addition.structure.solve(&corundum.expr.Expression(f128){
-    //         .binary = .{
-    //             .operation = .addition,
-    //             .left = &.{ .number = numbers[0] },
-    //             .right = &.{ .number = numbers[1] },
-    //         },
-    //     }, bindings, gpa);
-    //     defer solution.deinit(gpa);
-
-    //     std.debug.print("solution:\n", .{});
-
-    //     const stderr = std.io.getStdErr().writer();
-    //     try std.zon.stringify.serializeArbitraryDepth(solution, .{}, stderr);
-    // }
-
-    // std.debug.print("\n\nsubtraction\n-----\n", .{});
-    // {
-    //     const subtraction = corundum.template.Templates.get(.@"core/number/subtraction").module(f128);
-    //     const bindings = try subtraction.structure.matches(&corundum.expr.Expression(f128){
-    //         .binary = .{
-    //             .operation = .subtraction,
-    //             .left = &.{ .number = numbers[0] },
-    //             .right = &.{ .number = numbers[1] },
-    //         },
-    //     });
-    //     std.debug.print("bindings: {any}\n", .{bindings});
-
-    //     const solution = try subtraction.structure.solve(&corundum.expr.Expression(f128){
-    //         .binary = .{
-    //             .operation = .subtraction,
-    //             .left = &.{ .number = numbers[0] },
-    //             .right = &.{ .number = numbers[1] },
-    //         },
-    //     }, bindings, gpa);
-    //     defer solution.deinit(gpa);
-
-    //     const stderr = std.io.getStdErr().writer();
-    //     try std.zon.stringify.serializeArbitraryDepth(solution, .{}, stderr);
-    // }
-
-    std.debug.print("\n\nmultiplication\n-----\n", .{});
-    {
-        const multiplication = corundum.template.Templates.get(.@"core/number/multiplication");
-        const bindings = try multiplication.module(f128).structure.matches(&corundum.expr.Expression(f128){
-            .binary = .{
-                .operation = .multiplication,
-                .left = &.{ .number = numbers[0] },
-                .right = &.{ .number = numbers[1] },
-            },
-        });
-        std.debug.print("bindings: {any}\n", .{bindings});
-
-        const solution = try multiplication.module(f128).structure.solve(&corundum.expr.Expression(f128){
-            .binary = .{
-                .operation = .multiplication,
-                .left = &.{ .number = numbers[0] },
-                .right = &.{ .number = numbers[1] },
-            },
-        }, bindings, gpa);
-        defer solution.deinit(gpa);
-
-        const stderr = std.io.getStdErr().writer();
-        try std.zon.stringify.serializeArbitraryDepth(solution.steps, .{}, stderr);
+    // average
+    var sum: u64 = 0;
+    for (results) |value| {
+        sum += value;
     }
+
+    const average = sum / ITERATIONS;
+
+    // mean
+    std.mem.sort(u64, &results, {}, std.sort.asc(u64));
+    const mean = results[ITERATIONS / 2];
+
+    // std deviation
+    var variance_sum: f64 = 0.0;
+    for (results) |time| {
+        const diff = @as(f64, @floatFromInt(time)) - @as(f64, @floatFromInt(average));
+        variance_sum += diff * diff;
+    }
+    const variance = variance_sum / ITERATIONS;
+    const std_deviation = @sqrt(variance);
+
+    std.debug.print("\x1b[1mmean ± σ\x1b[0m\n", .{});
+    printTime(@as(f64, @floatFromInt(mean)));
+    std.debug.print(" ± ", .{});
+    printTime(std_deviation);
+    std.debug.print("\n", .{});
+}
+
+fn printTime(nanoseconds: f64) void {
+    if (nanoseconds < 1000) {
+        std.debug.print("{d:.2} ns", .{nanoseconds});
+    } else if (nanoseconds < 1_000_000) {
+        std.debug.print("{d:.2} μs", .{nanoseconds / 1000.0});
+    } else if (nanoseconds < 1_000_000_000) {
+        std.debug.print("{d:.2} ms", .{nanoseconds / 1_000_000.0});
+    } else {
+        std.debug.print("{d:.2} s", .{nanoseconds / 1_000_000_000.0});
+    }
+}
+
+fn benchmark(allocator: std.mem.Allocator, a: f64, b: f64) !void {
+    @setFloatMode(.optimized);
+
+    const multiplication = corundum.template.Templates.get(.@"core/number/multiplication");
+    const bindings = try multiplication.module(f64).structure.matches(&corundum.expr.Expression(f64){
+        .binary = .{
+            .operation = .multiplication,
+            .left = &.{ .number = a },
+            .right = &.{ .number = b },
+        },
+    });
+    // std.debug.print("bindings: {any}\n", .{bindings});
+
+    const solution = try multiplication.module(f64).structure.solve(&corundum.expr.Expression(f64){
+        .binary = .{
+            .operation = .multiplication,
+            .left = &.{ .number = a },
+            .right = &.{ .number = b },
+        },
+    }, bindings, allocator);
+    defer solution.deinit(allocator);
 }

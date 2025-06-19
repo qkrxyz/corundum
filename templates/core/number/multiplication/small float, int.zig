@@ -3,11 +3,7 @@ const Key = template.Templates.get(.@"core/number/multiplication").key;
 pub fn @"small float, int"(comptime T: type) Variant(Key, T) {
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            const number = comptime template.Templates.get(.@"core/number/number").module(T);
             var bindings = Bindings(Key, T).init(.{});
-
-            _ = try number.structure.matches(expression.binary.left);
-            _ = try number.structure.matches(expression.binary.right);
 
             const is_a_integer = @rem(expression.binary.left.number, 1.0) == 0.0;
             const is_b_integer = @rem(expression.binary.right.number, 1.0) == 0.0;

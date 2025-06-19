@@ -1,15 +1,17 @@
 const Key = template.Templates.get(.@"core/number/multiplication").key;
 
-pub fn @"a × 0"(comptime T: type) Variant(Key, T) {
+pub fn @"a × 0"(comptime T: type) Template(Key, T) {
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             const bindings = Bindings(Key, T).init(.{});
 
-            if (expression.binary.left.number != 0.0 and expression.binary.right.number != 0.0) {
-                return error.NoZero;
+            if (expression.* != .binary) return error.NotApplicable;
+
+            if ((expression.binary.left.* == .number and expression.binary.left.number == 0.0) or (expression.binary.right.* == .number and expression.binary.right.number == 0.0)) {
+                return bindings;
             }
 
-            return bindings;
+            return error.NoZero;
         }
 
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
@@ -27,12 +29,12 @@ pub fn @"a × 0"(comptime T: type) Variant(Key, T) {
         }
     };
 
-    return Variant(Key, T){
-        .name = "Number multiplication: a × 0",
+    return Template(Key, T){ .dynamic = .{
+        .name = "Multiplication: a × 0",
         .matches = Impl.matches,
         .solve = Impl.solve,
-        .score = 0,
-    };
+        .variants = &.{},
+    } };
 }
 
 test @"a × 0" {
@@ -45,27 +47,31 @@ test @"a × 0" {
             .right = &.{ .number = 0.0 },
         } };
 
-        const zero_times_one = Expression(T){ .binary = .{
+        const zero_times_x = Expression(T){ .binary = .{
             .left = &.{ .number = 0.0 },
             .operation = .multiplication,
-            .right = &.{ .number = 1.0 },
+            .right = &.{ .variable = "x" },
         } };
 
-        const one_times_two = Expression(T){ .binary = .{
+        const one_times_function = Expression(T){ .binary = .{
             .left = &.{ .number = 1.0 },
             .operation = .multiplication,
-            .right = &.{ .number = 2.0 },
+            .right = &.{ .function = .{
+                .name = "x",
+                .arguments = @constCast(&[_]*const Expression(T){}),
+                .body = null,
+            } },
         } };
 
-        var bindings = try Multiplication.matches(&one_times_zero);
+        var bindings = try Multiplication.dynamic.matches(&one_times_zero);
         try testing.expectEqual(null, bindings.get(.a));
         try testing.expectEqual(null, bindings.get(.b));
 
-        bindings = try Multiplication.matches(&zero_times_one);
+        bindings = try Multiplication.dynamic.matches(&zero_times_x);
         try testing.expectEqual(null, bindings.get(.a));
         try testing.expectEqual(null, bindings.get(.b));
 
-        try testing.expectError(error.NoZero, Multiplication.matches(&one_times_two));
+        try testing.expectError(error.NoZero, Multiplication.dynamic.matches(&one_times_function));
     }
 }
 
@@ -79,8 +85,8 @@ test "a × 0(T).solve" {
             .right = &.{ .number = 0.0 },
         } };
 
-        const bindings = try Multiplication.matches(&one_times_zero);
-        const solution = try Multiplication.solve(&one_times_zero, bindings, testing.allocator);
+        const bindings = try Multiplication.dynamic.matches(&one_times_zero);
+        const solution = try Multiplication.dynamic.solve(&one_times_zero, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
@@ -105,7 +111,7 @@ const expr = @import("expr");
 const template = @import("template");
 
 const Expression = expr.Expression;
-const Variant = template.Variant;
+const Template = template.Template;
 const Solution = template.Solution;
 const Step = template.Step;
 const Bindings = template.Bindings;

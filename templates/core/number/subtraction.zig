@@ -8,19 +8,17 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
 
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            const number = comptime template.Templates.get(.@"core/number/number").module(T);
             var bindings = Bindings(Key, T).init(.{});
 
-            _ = try number.structure.matches(expression.binary.left);
             bindings.put(.a, expression.binary.left);
-
-            _ = try number.structure.matches(expression.binary.right);
             bindings.put(.b, expression.binary.right);
 
             return bindings;
         }
 
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+            @setFloatMode(.optimized);
+
             for (variants) |variant| {
                 const new_bindings = variant.matches(expression) catch continue;
 
@@ -30,7 +28,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
             const a = bindings.get(.a).?.number;
             const b = bindings.get(.b).?.number;
 
-            // MARK: ±a - b
+            // ±a - b
             if (b > 0.0) {
                 const solution = try Solution(T).init(1, allocator);
 
@@ -44,7 +42,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
                 return solution;
             }
 
-            // MARK: ±a - (-b) = ±a + b
+            // ±a - (-b) = ±a + b
             const addition = template.Templates.get(.@"core/number/addition");
             const solution = try Solution(T).init(2, allocator);
 

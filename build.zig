@@ -171,6 +171,10 @@ pub fn build(b: *std.Build) !void {
         .install_subdir = "docs",
     });
     docs_step.dependOn(&install_docs.step);
+
+    // check
+    const check_step = b.step("check", "Check if the library compiles");
+    check_step.dependOn(&library.step);
 }
 
 fn modules(b: *std.Build, root: *std.Build.Module, tests: *std.Build.Step.Run) !void {

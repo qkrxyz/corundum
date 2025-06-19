@@ -3,20 +3,15 @@ const Key = template.Templates.get(.@"core/number/multiplication").key;
 pub fn @"int, int"(comptime T: type) Variant(Key, T) {
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            const number = comptime template.Templates.get(.@"core/number/number").module(T);
             var bindings = Bindings(Key, T).init(.{});
 
-            _ = try number.structure.matches(expression.binary.left);
             bindings.put(.a, expression.binary.left);
-
-            if (@rem(bindings.get(.a).?.number, 1.0) != 0.0) {
+            if (@mod(bindings.get(.a).?.number, 1.0) != 0.0) {
                 return error.NotAnInteger;
             }
 
-            _ = try number.structure.matches(expression.binary.right);
             bindings.put(.b, expression.binary.right);
-
-            if (@rem(bindings.get(.b).?.number, 1.0) != 0.0) {
+            if (@mod(bindings.get(.b).?.number, 1.0) != 0.0) {
                 return error.NotAnInteger;
             }
 

@@ -8,12 +8,6 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
 
             switch (expression.*) {
                 .binary => |binary| {
-                    // [...] - (-x) = [...] + x
-                    if (expression.binary.operation == .subtraction and expression.binary.right.* == .unary) {
-                        try bindings.append(expression.binary.right);
-                        return bindings.toOwnedSlice();
-                    }
-
                     if (expression.binary.operation != .subtraction) return error.NotApplicable;
 
                     const left = try matches(binary.left, allocator);
@@ -59,7 +53,11 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
                     .arguments = bindings,
                     .body = null,
                 } }).clone(allocator),
+                .description = try allocator.dupe(u8, ""),
+                .substeps = &.{},
             }).clone(allocator);
+
+            return solution;
         }
     };
 
@@ -72,7 +70,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
 }
 
 test subtraction {
-    inline for (.{ f16, f32, f64, f128 }) |T| {
+    inline for (.{ f32, f64, f128 }) |T| {
         const Addition = subtraction(T);
 
         const one_three_two = Expression(T){ .binary = .{

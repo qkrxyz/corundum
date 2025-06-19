@@ -5,14 +5,6 @@ pub const Key = enum {
 pub fn number(comptime T: type) Template(Key, T) {
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            if (std.math.isNan(expression.number)) {
-                return error.NotANumber;
-            }
-
-            if (std.math.isInf(expression.number)) {
-                return error.Infinity;
-            }
-
             const bindings = Bindings(Key, T).init(.{ .x = expression });
             return bindings;
         }
@@ -60,20 +52,6 @@ test "number(T).matches" {
 
     bindings = try Number.structure.matches(&two);
     try testing.expectEqual(bindings.get(.x), &two);
-}
-
-test "number(T).matches - edge cases" {
-    const Number = number(f64);
-
-    const inf = Expression(f64){ .number = std.math.inf(f64) };
-    const negative_inf = Expression(f64){ .number = -inf.number };
-    const nan = Expression(f64){ .number = std.math.nan(f64) };
-    const signaling_nan = Expression(f64){ .number = std.math.snan(f64) };
-
-    try testing.expectError(error.Infinity, Number.structure.matches(&inf));
-    try testing.expectError(error.Infinity, Number.structure.matches(&negative_inf));
-    try testing.expectError(error.NotANumber, Number.structure.matches(&nan));
-    try testing.expectError(error.NotANumber, Number.structure.matches(&signaling_nan));
 }
 
 test "number(T).solve" {

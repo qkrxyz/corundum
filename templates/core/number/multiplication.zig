@@ -8,19 +8,17 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
 
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            const number = comptime template.Templates.get(.@"core/number/number").module(T);
             var bindings = Bindings(Key, T).init(.{});
 
-            _ = try number.structure.matches(expression.binary.left);
             bindings.put(.a, expression.binary.left);
-
-            _ = try number.structure.matches(expression.binary.right);
             bindings.put(.b, expression.binary.right);
 
             return bindings;
         }
 
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+            @setFloatMode(.optimized);
+
             for (variants) |variant| {
                 const new_bindings = variant.matches(expression) catch continue;
 
@@ -49,50 +47,32 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                 .before = try expression.clone(allocator),
 
                 // ce + cf + de + df
-                .after = try (Expression(T){
-                    .binary = .{
-                        .operation = .addition,
-                        // ce + cf + de
-                        .left = &.{
-                            .binary = .{
-                                .operation = .addition,
-                                // ce + cf
-                                .left = &.{
-                                    .binary = .{
-                                        .operation = .addition,
-                                        // ce
-                                        .left = &.{ .binary = .{
-                                            .operation = .multiplication,
-                                            .left = &.{ .number = c },
-                                            .right = &.{ .number = e },
-                                        } },
-
-                                        // cf
-                                        .right = &.{ .binary = .{
-                                            .operation = .multiplication,
-                                            .left = &.{ .number = c },
-                                            .right = &.{ .number = f },
-                                        } },
-                                    },
-                                },
-
-                                // de
-                                .right = &.{ .binary = .{
-                                    .operation = .multiplication,
-                                    .left = &.{ .number = d },
-                                    .right = &.{ .number = e },
-                                } },
-                            },
-                        },
-
-                        // df
-                        .right = &.{ .binary = .{
+                .after = try (Expression(T){ .function = .{
+                    .name = "add",
+                    .arguments = @constCast(&[_]*const Expression(T){
+                        &.{ .binary = .{
+                            .operation = .multiplication,
+                            .left = &.{ .number = c },
+                            .right = &.{ .number = e },
+                        } },
+                        &.{ .binary = .{
+                            .operation = .multiplication,
+                            .left = &.{ .number = c },
+                            .right = &.{ .number = f },
+                        } },
+                        &.{ .binary = .{
+                            .operation = .multiplication,
+                            .left = &.{ .number = d },
+                            .right = &.{ .number = e },
+                        } },
+                        &.{ .binary = .{
                             .operation = .multiplication,
                             .left = &.{ .number = d },
                             .right = &.{ .number = f },
                         } },
-                    },
-                }).clone(allocator),
+                    }),
+                    .body = null,
+                } }).clone(allocator),
 
                 .description = try allocator.dupe(u8,
                     \\Expand
@@ -113,18 +93,16 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
 
             try steps.append(try (Step(T){
                 .before = try steps.items[0].after.?.clone(allocator),
-                .after = try (Expression(T){ .binary = .{
-                    .operation = .addition,
-                    .left = &.{ .binary = .{
-                        .operation = .addition,
-                        .left = &.{ .binary = .{
-                            .operation = .addition,
-                            .left = &.{ .number = ce },
-                            .right = &.{ .number = cf },
-                        } },
-                        .right = &.{ .number = de },
-                    } },
-                    .right = &.{ .number = df },
+
+                .after = try (Expression(T){ .function = .{
+                    .name = "add",
+                    .arguments = @constCast(&[_]*const Expression(T){
+                        &.{ .number = ce },
+                        &.{ .number = cf },
+                        &.{ .number = de },
+                        &.{ .number = df },
+                    }),
+                    .body = null,
                 } }).clone(allocator),
 
                 .description = try allocator.dupe(u8, "Simplify"),
@@ -134,10 +112,10 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
 
                     // always integer * integer, always one step
                     const solution_one = try solve(
-                        steps.items[0].after.?.binary.left.binary.left.binary.left,
+                        steps.items[0].after.?.function.arguments[0],
                         Bindings(Key, T).init(.{
-                            .a = steps.items[0].after.?.binary.left.binary.left.binary.left.binary.right,
-                            .b = steps.items[0].after.?.binary.left.binary.left.binary.left.binary.left,
+                            .a = steps.items[0].after.?.function.arguments[0].binary.right,
+                            .b = steps.items[0].after.?.function.arguments[0].binary.left,
                         }),
                         allocator,
                     );
@@ -146,28 +124,28 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
 
                     // always integer * small float (x2)
                     substeps[1] = try (Step(T){
-                        .before = try steps.items[0].after.?.binary.left.binary.left.binary.right.clone(allocator),
+                        .before = try steps.items[0].after.?.function.arguments[1].clone(allocator),
                         .after = try (Expression(T){ .number = cf }).clone(allocator),
                         .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ c, f }),
                         .substeps = (try solve(
-                            steps.items[0].after.?.binary.left.binary.left.binary.right,
+                            steps.items[0].after.?.function.arguments[1],
                             Bindings(Key, T).init(.{
-                                .a = steps.items[0].after.?.binary.left.binary.left.binary.right.binary.right,
-                                .b = steps.items[0].after.?.binary.left.binary.left.binary.right.binary.left,
+                                .a = steps.items[0].after.?.function.arguments[1].binary.right,
+                                .b = steps.items[0].after.?.function.arguments[1].binary.left,
                             }),
                             allocator,
                         )).steps,
                     }).clone(allocator);
 
                     substeps[2] = try (Step(T){
-                        .before = try steps.items[0].after.?.binary.left.binary.right.clone(allocator),
+                        .before = try steps.items[0].after.?.function.arguments[2].clone(allocator),
                         .after = try (Expression(T){ .number = de }).clone(allocator),
                         .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ d, e }),
                         .substeps = (try solve(
-                            steps.items[0].after.?.binary.left.binary.right,
+                            steps.items[0].after.?.function.arguments[2],
                             Bindings(Key, T).init(.{
-                                .a = steps.items[0].after.?.binary.left.binary.right.binary.left,
-                                .b = steps.items[0].after.?.binary.left.binary.right.binary.right,
+                                .a = steps.items[0].after.?.function.arguments[2].binary.left,
+                                .b = steps.items[0].after.?.function.arguments[2].binary.right,
                             }),
                             allocator,
                         )).steps,
@@ -175,14 +153,14 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
 
                     // always non-zero/one small float * non-zero/one small float
                     substeps[3] = try (Step(T){
-                        .before = try steps.items[0].after.?.binary.right.clone(allocator),
+                        .before = try steps.items[0].after.?.function.arguments[3].clone(allocator),
                         .after = try (Expression(T){ .number = df }).clone(allocator),
                         .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ d, f }),
                         .substeps = (try solve(
-                            steps.items[0].after.?.binary.right,
+                            steps.items[0].after.?.function.arguments[3],
                             Bindings(Key, T).init(.{
-                                .a = steps.items[0].after.?.binary.right.binary.left,
-                                .b = steps.items[0].after.?.binary.right.binary.right,
+                                .a = steps.items[0].after.?.function.arguments[3].binary.left,
+                                .b = steps.items[0].after.?.function.arguments[3].binary.right,
                             }),
                             allocator,
                         )).steps,
@@ -256,7 +234,7 @@ test "multiplication(T).matches" {
 }
 
 test "multiplication(T).solve" {
-    inline for (.{ f16, f32, f64 }) |T| {
+    inline for (.{ f32, f64, f128 }) |T| {
         const Multiplication = multiplication(T);
 
         const expression = Expression(T){ .binary = .{
@@ -279,84 +257,71 @@ test "multiplication(T).solve" {
                             .right = &.{ .number = 1.5 },
                         },
                     },
-                    .after = &.{ .binary = .{
-                        .operation = .addition,
-                        .left = &.{
-                            .binary = .{
-                                .operation = .addition,
-                                .left = &.{
-                                    .binary = .{
-                                        .operation = .addition,
-                                        .left = &.{ .binary = .{
-                                            .operation = .multiplication,
-                                            .left = &.{ .number = 4.0 },
-                                            .right = &.{ .number = 1.0 },
-                                        } },
-                                        .right = &.{ .binary = .{
-                                            .operation = .multiplication,
-                                            .left = &.{ .number = 4.0 },
-                                            .right = &.{ .number = 0.5 },
-                                        } },
-                                    },
-                                },
-                                .right = &.{ .binary = .{
-                                    .operation = .multiplication,
-                                    .left = &.{ .number = 0.5 },
-                                    .right = &.{ .number = 1.0 },
-                                } },
-                            },
-                        },
-                        .right = &.{ .binary = .{
-                            .operation = .multiplication,
-                            .left = &.{ .number = 0.5 },
-                            .right = &.{ .number = 0.5 },
-                        } },
+                    .after = &.{ .function = .{
+                        .name = "add",
+                        .arguments = @constCast(&[_]*const Expression(T){
+                            &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 4.0 },
+                                .right = &.{ .number = 1.0 },
+                            } },
+                            &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 4.0 },
+                                .right = &.{ .number = 0.5 },
+                            } },
+                            &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 0.5 },
+                                .right = &.{ .number = 1.0 },
+                            } },
+                            &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 0.5 },
+                                .right = &.{ .number = 0.5 },
+                            } },
+                        }),
+                        .body = null,
                     } },
                     .description = "Expand\n\nWe can rewrite $a$ as $c + d$, where $c$ is the whole part of $a$ and $d$ is the fractional part.\nWe can also rewrite $b$ as $e + f$, where $e$ is the whole part of $b$ and $f$ is the fractional part.\nThis gives us $a * b = (c + d) * (e + f) = ce + cf + de + df$.",
                     .substeps = &.{},
                 },
                 &.{
-                    .before = &.{ .binary = .{
-                        .operation = .addition,
-                        .left = &.{ .binary = .{
-                            .operation = .addition,
-                            .left = &.{ .binary = .{
-                                .operation = .addition,
-                                .left = &.{ .binary = .{
-                                    .operation = .multiplication,
-                                    .left = &.{ .number = 4.0 },
-                                    .right = &.{ .number = 1.0 },
-                                } },
-                                .right = &.{ .binary = .{
-                                    .operation = .multiplication,
-                                    .left = &.{ .number = 4.0 },
-                                    .right = &.{ .number = 0.5 },
-                                } },
+                    .before = &.{ .function = .{
+                        .name = "add",
+                        .arguments = @constCast(&[_]*const Expression(T){
+                            &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 4.0 },
+                                .right = &.{ .number = 1.0 },
                             } },
-                            .right = &.{ .binary = .{
+                            &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 4.0 },
+                                .right = &.{ .number = 0.5 },
+                            } },
+                            &.{ .binary = .{
                                 .operation = .multiplication,
                                 .left = &.{ .number = 0.5 },
-                                .right = &.{ .number = 1 },
+                                .right = &.{ .number = 1.0 },
                             } },
-                        } },
-                        .right = &.{ .binary = .{
-                            .operation = .multiplication,
-                            .left = &.{ .number = 0.5 },
-                            .right = &.{ .number = 0.5 },
-                        } },
+                            &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 0.5 },
+                                .right = &.{ .number = 0.5 },
+                            } },
+                        }),
+                        .body = null,
                     } },
-                    .after = &.{ .binary = .{
-                        .operation = .addition,
-                        .left = &.{ .binary = .{
-                            .operation = .addition,
-                            .left = &.{ .binary = .{
-                                .operation = .addition,
-                                .left = &.{ .number = 4 },
-                                .right = &.{ .number = 2 },
-                            } },
-                            .right = &.{ .number = 0.5 },
-                        } },
-                        .right = &.{ .number = 0.25 },
+                    .after = &.{ .function = .{
+                        .name = "add",
+                        .arguments = @constCast(&[_]*const Expression(T){
+                            &.{ .number = 4 },
+                            &.{ .number = 2 },
+                            &.{ .number = 0.5 },
+                            &.{ .number = 0.25 },
+                        }),
+                        .body = null,
                     } },
                     .description = "Simplify",
                     .substeps = @constCast(&[_]*const Step(T){
@@ -448,18 +413,15 @@ test "multiplication(T).solve" {
                     }),
                 },
                 &.{
-                    .before = &.{ .binary = .{
-                        .operation = .addition,
-                        .left = &.{ .binary = .{
-                            .operation = .addition,
-                            .left = &.{ .binary = .{
-                                .operation = .addition,
-                                .left = &.{ .number = 4.0 },
-                                .right = &.{ .number = 2.0 },
-                            } },
-                            .right = &.{ .number = 0.5 },
-                        } },
-                        .right = &.{ .number = 0.25 },
+                    .before = &.{ .function = .{
+                        .name = "add",
+                        .arguments = @constCast(&[_]*const Expression(T){
+                            &.{ .number = 4 },
+                            &.{ .number = 2 },
+                            &.{ .number = 0.5 },
+                            &.{ .number = 0.25 },
+                        }),
+                        .body = null,
                     } },
                     .after = &.{ .number = 6.75 },
                     .description = "Add 4, 2, 0.5 and 0.25 together",

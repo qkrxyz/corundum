@@ -3,24 +3,28 @@ const Key = template.Templates.get(.@"core/number/multiplication").key;
 pub fn @"small float, small float"(comptime T: type) Variant(Key, T) {
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            const number = comptime template.Templates.get(.@"core/number/number").module(T);
             var bindings = Bindings(Key, T).init(.{});
 
-            _ = try number.structure.matches(expression.binary.left);
             bindings.put(.a, expression.binary.left);
-
             if (@abs(bindings.get(.a).?.number) > 1.0) {
                 return error.NotSmallEnough;
             }
 
-            _ = try number.structure.matches(expression.binary.right);
             bindings.put(.b, expression.binary.right);
-
             if (@abs(bindings.get(.b).?.number) > 1.0) {
                 return error.NotSmallEnough;
             }
 
             return bindings;
+        }
+
+        fn @"10^-x"(x: usize) T {
+            var result: T = 10.0;
+            for (0..x + 1) |_| {
+                result /= 10.0;
+            }
+
+            return result;
         }
 
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
@@ -54,7 +58,7 @@ pub fn @"small float, small float"(comptime T: type) Variant(Key, T) {
             // pad left
             solution.steps[1] = try (Step(T){
                 .before = try solution.steps[0].after.?.clone(allocator),
-                .after = try (Expression(T){ .number = @as(T, @floatCast(std.math.pow(f64, 10.0, -@as(f64, @floatFromInt(a_str[2..].len + b_str[2..].len))))) * multiplied }).clone(allocator),
+                .after = try (Expression(T){ .number = @"10^-x"(a_str[2..].len + b_str[2..].len) * multiplied }).clone(allocator),
 
                 .description = try std.fmt.allocPrint(allocator, "Make the result have {d} decimal places", .{a_str[2..].len + b_str[2..].len}),
                 .substeps = try allocator.alloc(*const Step(T), 0),

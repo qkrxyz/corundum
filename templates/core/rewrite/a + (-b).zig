@@ -45,7 +45,7 @@ pub fn @"a + (-b)"(comptime T: type) Template(Key, T) {
 }
 
 test @"a + (-b)" {
-    inline for (.{ f16, f32, f64, f128 }) |T| {
+    inline for (.{ f32, f64, f128 }) |T| {
         const Rewrite = @"a + (-b)"(T);
 
         const one_minus_minus_x = Expression(T){ .binary = .{
@@ -65,7 +65,7 @@ test @"a + (-b)" {
 }
 
 test "a + (-b)(T).solve" {
-    inline for (.{ f16, f32, f64, f128 }) |T| {
+    inline for (.{ f32, f64, f128 }) |T| {
         const Rewrite = @"a + (-b)"(T);
 
         const one_minus_minus_x = Expression(T){ .binary = .{

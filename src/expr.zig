@@ -172,6 +172,7 @@ pub fn Expression(T: type) type {
                     for (function.arguments) |argument| {
                         argument.deinit(allocator);
                     }
+                    allocator.free(function.arguments);
 
                     if (function.body) |body| body.deinit(allocator);
                 },

@@ -1,28 +1,27 @@
 pub const Key = enum {
-    inner,
+    length,
 };
 
-pub fn parenthesis(comptime T: type) Template(Key, T) {
+pub fn length(comptime T: type) Template(Key, T) {
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            if (expression.* != .parenthesis) return error.NotApplicable;
+            if (expression.* != .function) return error.NotApplicable;
 
-            const bindings = Bindings(Key, T).init(.{
-                .inner = expression.parenthesis,
-            });
+            var bindings = Bindings(Key, T).init(.{});
+            bindings.put(.length, Expression(T){ .number = expression.function.len });
+
             return bindings;
         }
 
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            const inner = bindings.get(.inner).?;
+            const len = bindings.get(.length).?;
 
             const solution = try Solution(T).init(1, allocator);
-
             solution.steps[0] = try (Step(T){
                 .before = try expression.clone(allocator),
-                .after = try inner.clone(allocator),
-                .description = try allocator.dupe(u8, "Simplify"),
-                .substeps = try allocator.alloc(*const Step(T), 0),
+                .after = try len.clone(allocator),
+                .description = try std.fmt.allocPrint(allocator, "This function has {d} arguments.", .{len.number}),
+                .substeps = &.{},
             }).clone(allocator);
 
             return solution;
@@ -31,26 +30,12 @@ pub fn parenthesis(comptime T: type) Template(Key, T) {
 
     return Template(Key, T){
         .dynamic = .{
-            .name = "Rewrite: parenthesis",
+            .name = "N-ary function: length",
             .matches = Impl.matches,
             .solve = Impl.solve,
             .variants = &.{},
         },
     };
-}
-
-test parenthesis {
-    inline for (.{ f32, f64, f128 }) |T| {
-        const Parens = parenthesis(T);
-
-        const one = Expression(T){ .number = 1.0 };
-        const paren_one = Expression(T){ .parenthesis = &one };
-
-        try testing.expectError(error.NotApplicable, Parens.dynamic.matches(&one));
-
-        const bindings = try Parens.dynamic.matches(&paren_one);
-        try testing.expectEqualDeep(bindings.get(.inner).?, &one);
-    }
 }
 
 const std = @import("std");

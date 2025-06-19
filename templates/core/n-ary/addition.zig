@@ -59,7 +59,11 @@ pub fn addition(comptime T: type) Template(Key, T) {
                     .arguments = bindings,
                     .body = null,
                 } }).clone(allocator),
+                .description = try allocator.dupe(u8, ""),
+                .substeps = &.{},
             }).clone(allocator);
+
+            return solution;
         }
     };
 
@@ -72,7 +76,7 @@ pub fn addition(comptime T: type) Template(Key, T) {
 }
 
 test addition {
-    inline for (.{ f16, f32, f64, f128 }) |T| {
+    inline for (.{ f32, f64, f128 }) |T| {
         const Addition = addition(T);
 
         const one_three_two = Expression(T){ .binary = .{

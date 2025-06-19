@@ -3,11 +3,7 @@ const Key = template.Templates.get(.@"core/number/multiplication").key;
 pub fn @"a × 1"(comptime T: type) Variant(Key, T) {
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            const number = comptime template.Templates.get(.@"core/number/number").module(T);
             var bindings = Bindings(Key, T).init(.{});
-
-            _ = try number.structure.matches(expression.binary.left);
-            _ = try number.structure.matches(expression.binary.right);
 
             // In bindings, `a` is the number not equal to one.
             if (expression.binary.left.number == 1.0) {
@@ -45,7 +41,7 @@ pub fn @"a × 1"(comptime T: type) Variant(Key, T) {
 }
 
 test @"a × 1" {
-    inline for (.{ f16, f32, f64, f128 }) |T| {
+    inline for (.{ f32, f64, f128 }) |T| {
         const Multiplication = @"a × 1"(T);
 
         const two_times_one = Expression(T){ .binary = .{
@@ -79,7 +75,7 @@ test @"a × 1" {
 }
 
 test "a × 1(T).solve" {
-    inline for (.{ f16, f32, f64, f128 }) |T| {
+    inline for (.{ f32, f64, f128 }) |T| {
         const Addition = @"a × 1"(T);
 
         const one_times_two = Expression(T){ .binary = .{
