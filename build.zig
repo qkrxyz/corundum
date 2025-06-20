@@ -37,7 +37,7 @@ pub fn build(b: *std.Build) !void {
             .file_path = "all_templates.zig",
             .parent_name = "template",
             .get_code =
-            \\pub inline fn get(comptime name: Kind) blk: {
+            \\pub inline fn get(name: Kind) blk: {
             \\    if (inner.get(name)) |module| {
             \\        if (@hasDecl(module, "Key")) {
             \\            break :blk struct {
@@ -66,21 +66,19 @@ pub fn build(b: *std.Build) !void {
             ,
             .additional_code =
             \\pub inline fn templates() []Kind {
-            \\    comptime return blk: {
-            \\        @setEvalBranchQuota((1 << 32) - 1);
-            \\        var kinds: [std.meta.fields(Kind).len]Kind = undefined;
-            \\        var length: comptime_int = 0;
+            \\    @setEvalBranchQuota((1 << 32) - 1);
+            \\    comptime var kinds: [std.meta.fields(Kind).len]Kind = undefined;
+            \\    comptime var length: comptime_int = 0;
             \\
-            \\        for (std.meta.fields(Kind)) |entry| {
-            \\            const value = get(@enumFromInt(entry.value));
-            \\            if (@typeInfo(@TypeOf(value)) == .@"struct") {
-            \\                kinds[length] = @enumFromInt(entry.value);
-            \\                length += 1;
-            \\            }
+            \\    inline for (std.meta.fields(Kind)) |entry| {
+            \\        const value = get(@enumFromInt(entry.value));
+            \\        if (@typeInfo(@TypeOf(value)) == .@"struct") {
+            \\            kinds[length] = @enumFromInt(entry.value);
+            \\            length += 1;
             \\        }
+            \\    }
             \\
-            \\        break :blk kinds[0..length];
-            \\    };
+            \\    return kinds[0..length];
             \\}
             \\
             \\pub inline fn variants(comptime kind: Kind, comptime T: type) blk: {

@@ -6,8 +6,10 @@ pub const Key = enum {
 pub fn @"a + (-b)"(comptime T: type) Template(Key, T) {
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            if (expression.* != .binary and expression.binary.operation != .addition) return error.NotApplicable;
-            if (expression.binary.right.* != .unary and expression.binary.right.unary.operation != .negation) return error.NotApplicable;
+            if (expression.* != .binary) return error.NotApplicable;
+            if (expression.binary.operation != .addition) return error.NotAddition;
+
+            if (expression.binary.right.* == .unary and expression.binary.right.unary.operation != .negation) return error.NotApplicable;
 
             const bindings = Bindings(Key, T).init(.{
                 .a = expression.binary.left,

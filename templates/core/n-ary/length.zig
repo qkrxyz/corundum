@@ -8,7 +8,7 @@ pub fn length(comptime T: type) Template(Key, T) {
             if (expression.* != .function) return error.NotApplicable;
 
             var bindings = Bindings(Key, T).init(.{});
-            bindings.put(.length, Expression(T){ .number = expression.function.len });
+            bindings.put(.length, &Expression(T){ .number = @floatFromInt(expression.function.arguments.len) });
 
             return bindings;
         }
