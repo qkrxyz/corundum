@@ -8,7 +8,7 @@ pub fn @"a + (-b)"(comptime T: type) Template(Key, T) {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             if (expression.* != .binary) return error.NotApplicable;
 
-            if ((expression.binary.right.* == .unary and expression.binary.right.unary.operation == .negation) and expression.binary.operation == .addition) {
+            if ((expression.binary.right.* == .unary and expression.binary.right.unary.operation == .negation) or expression.binary.operation == .addition) {
                 const bindings = Bindings(Key, T).init(.{
                     .a = expression.binary.left,
                     .b = expression.binary.right,

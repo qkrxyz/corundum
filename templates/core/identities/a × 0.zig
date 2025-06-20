@@ -1,4 +1,7 @@
-const Key = template.Templates.get(.@"core/number/multiplication").key;
+pub const Key = enum {
+    a,
+    b,
+};
 
 pub fn @"a × 0"(comptime T: type) Template(Key, T) {
     const Impl = struct {

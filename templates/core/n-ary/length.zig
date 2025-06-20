@@ -1,26 +1,23 @@
-pub const Key = enum {
-    length,
-};
+pub const Key = enum {};
 
 pub fn length(comptime T: type) Template(Key, T) {
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             if (expression.* != .function) return error.NotApplicable;
 
-            var bindings = Bindings(Key, T).init(.{});
-            bindings.put(.length, &Expression(T){ .number = @floatFromInt(expression.function.arguments.len) });
-
+            const bindings = Bindings(Key, T).init(.{});
             return bindings;
         }
 
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            const len = bindings.get(.length).?;
+            _ = bindings;
+            const len = expression.function.arguments.len;
 
             const solution = try Solution(T).init(1, allocator);
             solution.steps[0] = try (Step(T){
                 .before = try expression.clone(allocator),
-                .after = try len.clone(allocator),
-                .description = try std.fmt.allocPrint(allocator, "This function has {d} arguments.", .{len.number}),
+                .after = try (Expression(T){ .number = @floatFromInt(len) }).clone(allocator),
+                .description = try std.fmt.allocPrint(allocator, "This function has {d} arguments.", .{len}),
                 .substeps = &.{},
             }).clone(allocator);
 
@@ -36,6 +33,29 @@ pub fn length(comptime T: type) Template(Key, T) {
             .variants = &.{},
         },
     };
+}
+
+test length {
+    inline for (.{ f32, f64, f128 }) |T| {
+        const Length = length(T);
+
+        inline for (0..20) |i| {
+            const avg = Expression(T){ .function = .{
+                .name = "average",
+                .arguments = @constCast(&[_]*const Expression(T){
+                    &.{ .number = 1.0 },
+                } ** i),
+                .body = null,
+            } };
+
+            const bindings = try Length.dynamic.matches(&avg);
+
+            const solution = try Length.dynamic.solve(&avg, bindings, testing.allocator);
+            defer solution.deinit(testing.allocator);
+
+            try testing.expectEqual(i, solution.steps[0].after.?.number);
+        }
+    }
 }
 
 const std = @import("std");

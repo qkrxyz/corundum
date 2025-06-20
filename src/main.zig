@@ -14,6 +14,7 @@ pub fn main() !void {
     defer if (is_debug) {
         _ = debug_allocator.deinit();
     };
+    
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
 

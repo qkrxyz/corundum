@@ -4,9 +4,9 @@ A scalable, "simple" and fast math engine with step-by-step instructions, writte
 
 ## Roadmap
 
-- [x] Basic expressions, templates and solutions
-- [x] Template variants
-- [x] Basic arithmetic templates (number addition, subtration, division) with high quality step-by-step solutions
+- [x] ~~Basic expressions, templates and solutions~~
+- [x] ~~Template variants~~
+- [x] ~~Basic arithmetic templates (number addition, subtration, division) with high quality step-by-step solutions~~
 - [ ] Number division, exponentiation
 - [ ] Builtin functions - square root, logarithms, etc.
 - [ ] __Refactor__ change everything to utilize `.zon` files for metadata/static strings and be l18n/i10n ready, along with expanded test coverage

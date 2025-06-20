@@ -6,7 +6,7 @@ pub fn build(b: *std.Build) !void {
 
     // root module
     const root = b.createModule(.{
-        .root_source_file = b.path("src/root.zig"),
+        .root_source_file = b.path(if (target.result.cpu.arch == .wasm32 and target.result.os.tag == .freestanding) "src/wasm.zig" else "src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -140,25 +140,31 @@ pub fn build(b: *std.Build) !void {
         .name = "corundum",
         .root_module = root,
     });
+    library.entry = .disabled;
+    library.discard_local_symbols = true;
+    library.export_memory = true;
+    library.rdynamic = true;
     b.installArtifact(library);
 
-    // executable
-    const exe = b.addExecutable(.{
-        .name = "corundum",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    exe.root_module.addImport("corundum", root);
-    b.installArtifact(exe);
+    if (target.result.os.tag != .freestanding) {
+        // executable
+        const exe = b.addExecutable(.{
+            .name = "corundum",
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        exe.root_module.addImport("corundum", root);
+        b.installArtifact(exe);
 
-    const run_exe = b.addRunArtifact(exe);
-    run_exe.step.dependOn(b.getInstallStep());
+        const run_exe = b.addRunArtifact(exe);
+        run_exe.step.dependOn(b.getInstallStep());
 
-    if (b.args) |args| run_exe.addArgs(args);
+        if (b.args) |args| run_exe.addArgs(args);
 
-    const run_step = b.step("run", "Run the executable");
-    run_step.dependOn(&run_exe.step);
+        const run_step = b.step("run", "Run the executable");
+        run_step.dependOn(&run_exe.step);
+    }
 
     // docs
     const docs_step = b.step("docs", "Generate documentation");
