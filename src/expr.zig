@@ -107,6 +107,9 @@ pub fn Expression(T: type) type {
 
             /// `^`
             exponentiation,
+
+            /// `%`
+            modulus,
         };
 
         pub const UnaryOperation = enum {

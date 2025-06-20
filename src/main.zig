@@ -19,26 +19,27 @@ pub fn main() !void {
 
     const allocator = arena.allocator();
 
-    // const arguments = try std.process.argsAlloc(allocator);
-    // defer std.process.argsFree(allocator, arguments);
+    const arguments = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, arguments);
 
-    // if (arguments.len >= 2) {
-    var diagnostics: std.zon.parse.Diagnostics = .{};
+    if (arguments.len >= 2) {
+        var diagnostics: std.zon.parse.Diagnostics = .{};
 
-    const parsed = std.zon.parse.fromSlice(corundum.expression.Expression(f64), allocator, ".{ .binary = .{ .left = .{ .number = 2.0 }, .right = .{ .number = 3.0 }, .operation = .addition } }", &diagnostics, .{}) catch {
-        // var error_iterator = diagnostics.iterateErrors();
-        // while (error_iterator.next()) |err| {
-        //     const stderr = std.io.getStdErr().writer();
-        //     try err.fmtMessage(&diagnostics).format("{s}", .{}, stderr);
-        // }
+        const parsed = std.zon.parse.fromSlice(corundum.expression.Expression(f64), allocator, arguments[1], &diagnostics, .{}) catch {
+            var error_iterator = diagnostics.iterateErrors();
+            while (error_iterator.next()) |err| {
+                const stderr = std.io.getStdErr().writer();
+                try err.fmtMessage(&diagnostics).format("{s}", .{}, stderr);
+            }
 
-        std.process.exit(1);
-    };
-    // std.debug.print("parsed: {any}\n\n", .{parsed});
+            std.process.exit(1);
+        };
 
-    try benchmark2(allocator, &parsed);
-    // try run(benchmark2, .{ allocator, &parsed });
-    // }
+        try benchmark2(allocator, &parsed);
+        // std.debug.print("parsed: {any}\n\n", .{parsed});
+
+        // try run(benchmark2, .{ allocator, &parsed });
+    }
 
     // try run(benchmark, .{ allocator, 2.5, 3.5 });
 }
@@ -104,27 +105,49 @@ fn benchmark2(allocator: std.mem.Allocator, expression: *const corundum.expressi
     const structural = expression.structural();
     const hash = expression.hash();
 
-    inline for (corundum.template.Templates.templates()) |template| {
+    const stderr = std.io.getStdErr().writer();
+
+    inline for (corundum.template.Templates.all()) |template| {
         const value = corundum.template.Templates.get(template);
         switch (value.module(f64)) {
             .dynamic => |dynamic| {
                 const bindings = if (@typeInfo(@TypeOf(dynamic.matches)).@"fn".params.len == 2) dynamic.matches(expression, allocator) else dynamic.matches(expression);
-                _ = bindings catch .{};
 
-                // std.debug.print("{}: {any}\n", .{ template, bindings });
+                if (bindings) |b| {
+                    std.debug.print("{}: ", .{template});
+                    const solution = try dynamic.solve(expression, b, allocator);
+                    defer solution.deinit(allocator);
+
+                    try std.zon.stringify.serializeArbitraryDepth(solution, .{}, stderr);
+                    std.debug.print("\n", .{});
+                } else |err| {
+                    std.debug.print("{}: {}\n", .{ template, err });
+                }
             },
             .structure => |structure| {
                 if (structural == comptime structure.ast.structural()) {
-                    // std.debug.print("{}: {any}\n", .{ template, structure.matches(expression) });
+                    std.debug.print("{}: ", .{template});
+
+                    const bindings = try structure.matches(expression);
+                    const solution = try structure.solve(expression, bindings, allocator);
+                    defer solution.deinit(allocator);
+
+                    try std.zon.stringify.serializeArbitraryDepth(solution, .{}, stderr);
+                    std.debug.print("\n", .{});
                 } else {
-                    // std.debug.print("{}: doesn't match\n", .{template});
+                    std.debug.print("{}: doesn't match\n", .{template});
                 }
             },
             .identity => |identity| {
                 if (hash == comptime identity.ast.hash()) {
-                    // std.debug.print("{}: {any}\n", .{ template, hash == comptime identity.ast.hash() }),
+                    // std.debug.print("{}: {any}\n", .{ template, hash == comptime identity.ast.hash() });
+                    std.debug.print("{}: ", .{template});
+
+                    const solution = identity.proof();
+                    try std.zon.stringify.serializeArbitraryDepth(solution, .{}, stderr);
+                    std.debug.print("\n", .{});
                 } else {
-                    // std.debug.print("{}: doesn't match\n", .{ template }),
+                    std.debug.print("{}: doesn't match\n", .{template});
                 }
             },
         }

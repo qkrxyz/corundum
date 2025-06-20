@@ -171,7 +171,7 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
         .name = "Number multiplication: float × integer",
         .matches = Impl.matches,
         .solve = Impl.solve,
-        .score = 4,
+        .score = 2,
     };
 }
 

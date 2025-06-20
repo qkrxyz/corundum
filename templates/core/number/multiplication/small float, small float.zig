@@ -72,7 +72,7 @@ pub fn @"small float, small float"(comptime T: type) Variant(Key, T) {
         .name = "Number multiplication: small float × small float",
         .matches = Impl.matches,
         .solve = Impl.solve,
-        .score = 2,
+        .score = 4,
     };
 }
 

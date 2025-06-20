@@ -46,7 +46,6 @@ pub fn addition(comptime T: type) Template(Key, T) {
                 .templated => unreachable,
             }
 
-            if (bindings.items.len < 2) return error.NotEnoughArguments;
             return bindings.toOwnedSlice();
         }
 

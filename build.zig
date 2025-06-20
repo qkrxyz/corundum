@@ -65,7 +65,7 @@ pub fn build(b: *std.Build) !void {
             \\
             ,
             .additional_code =
-            \\pub inline fn templates() []Kind {
+            \\pub inline fn all() []Kind {
             \\    @setEvalBranchQuota((1 << 32) - 1);
             \\    comptime var kinds: [std.meta.fields(Kind).len]Kind = undefined;
             \\    comptime var length: comptime_int = 0;
@@ -123,7 +123,7 @@ pub fn build(b: *std.Build) !void {
             \\        struct {
             \\            fn sort(context: @TypeOf({}), lhs: template.Variant(module.key, T), rhs: template.Variant(module.key, T)) bool {
             \\                _ = context;
-            \\                return lhs.score < rhs.score;
+            \\                return lhs.score > rhs.score;
             \\            }
             \\        }.sort,
             \\    );

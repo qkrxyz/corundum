@@ -36,7 +36,7 @@ pub fn @"a × 1"(comptime T: type) Variant(Key, T) {
         .name = "Number multiplication: a × 1",
         .matches = Impl.matches,
         .solve = Impl.solve,
-        .score = 1,
+        .score = 999,
     };
 }
 

@@ -21,8 +21,6 @@ pub fn division(comptime T: type) Template(Key, T) {
         }
 
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            @setFloatMode(.optimized);
-
             for (variants) |variant| {
                 const new_bindings = variant.matches(expression) catch continue;
 
@@ -34,15 +32,15 @@ pub fn division(comptime T: type) Template(Key, T) {
 
             var steps = try std.ArrayList(*const Step(T)).initCapacity(allocator, 1);
 
-            steps.append(try (Step(T){
-                .before = try expression.clone(),
+            try steps.append(try (Step(T){
+                .before = try expression.clone(allocator),
                 .after = try (Expression(T){ .fraction = .{
                     .numerator = bindings.get(.a).?,
                     .denominator = bindings.get(.b).?,
-                } }).clone(),
+                } }).clone(allocator),
                 .description = try std.fmt.allocPrint(allocator, "Divide {d} by {d}", .{ a, b }),
                 .substeps = &.{},
-            }).clone());
+            }).clone(allocator));
 
             return Solution(T){ .steps = try steps.toOwnedSlice() };
         }
