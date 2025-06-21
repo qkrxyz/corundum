@@ -7,8 +7,9 @@ pub fn @"a + (-b)"(comptime T: type) Template(Key, T) {
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             if (expression.* != .binary) return error.NotApplicable;
+            if (expression.binary.operation != .addition) return error.NotApplicable;
 
-            if ((expression.binary.right.* == .unary and expression.binary.right.unary.operation == .negation) or expression.binary.operation == .addition) {
+            if ((expression.binary.right.* == .unary and expression.binary.right.unary.operation == .negation)) {
                 const bindings = Bindings(Key, T).init(.{
                     .a = expression.binary.left,
                     .b = expression.binary.right,
@@ -53,7 +54,7 @@ test @"a + (-b)" {
 
         const one_minus_minus_x = Expression(T){ .binary = .{
             .left = &.{ .number = 1.0 },
-            .operation = .subtraction,
+            .operation = .addition,
             .right = &.{ .unary = .{
                 .operation = .negation,
                 .operand = &.{ .variable = "x" },
@@ -73,7 +74,7 @@ test "a + (-b)(T).solve" {
 
         const one_minus_minus_x = Expression(T){ .binary = .{
             .left = &.{ .number = 1.0 },
-            .operation = .subtraction,
+            .operation = .addition,
             .right = &.{ .unary = .{
                 .operation = .negation,
                 .operand = &.{ .variable = "x" },

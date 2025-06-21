@@ -1,0 +1,4 @@
+.{
+    .name = "core",
+    .score = 10,
+}

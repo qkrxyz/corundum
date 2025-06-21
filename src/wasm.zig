@@ -1,60 +1,85 @@
 const std = @import("std");
+const corundum = @import("corundum");
 
-pub const expression = @import("expr");
-pub const template = @import("template");
-const T: type = f64;
+const expression = corundum.expression;
+const template = corundum.template;
+const T = f64;
 
-var arena = std.heap.ArenaAllocator.init(std.heap.smp_allocator);
-const allocator = arena.allocator();
+const allocator = std.heap.wasm_allocator;
 
-pub export fn alloc(len: usize) [*]u8 {
-    return (allocator.alloc(u8, len) catch @panic("Out of memory")).ptr;
+export fn alloc(len: usize) usize {
+    const ptr = allocator.alloc(u8, len) catch @panic("out of memory");
+    return @intFromPtr(ptr.ptr);
 }
 
-pub export fn free(ptr: [*]u8, len: usize) void {
-    allocator.free(ptr[0..len]);
+export fn free(ptr: usize, len: usize) void {
+    allocator.free(@as([*]u8, @ptrFromInt(ptr))[0..len]);
 }
 
-pub export fn solve(string: [*:0]u8, length: usize) ?*const []*const template.Step(T) {
+export fn solve(string: [*]u8, length: usize) u64 {
     const slice = string[0..length :0];
-    const parsed = std.zon.parse.fromSlice(expression.Expression(T), allocator, slice, null, .{});
+    const parsed = std.zon.parse.fromSlice(*const expression.Expression(T), allocator, slice, null, .{});
+
+    var output = std.ArrayList(u8).init(allocator);
 
     if (parsed) |expr| {
         const structural = expr.structural();
         const hash = expr.hash();
 
-        inline for (template.Templates.all()) |kind| {
-            const value = template.Templates.get(kind);
+        inline for (corundum.template.Templates.all()) |t| {
+            const value = corundum.template.Templates.get(t);
             switch (value.module(f64)) {
                 .dynamic => |dynamic| {
-                    const bindings = if (@typeInfo(@TypeOf(dynamic.matches)).@"fn".params.len == 2) dynamic.matches(&expr, allocator) else dynamic.matches(&expr);
+                    const bindings = if (@typeInfo(@TypeOf(dynamic.matches)).@"fn".params.len == 2) dynamic.matches(expr, allocator) else dynamic.matches(expr);
 
                     if (bindings) |b| {
-                        const solution = dynamic.solve(&expr, b, allocator) catch unreachable;
+                        output.writer().print("{}: ", .{t}) catch @panic("out of memory");
+                        const solution = dynamic.solve(expr, b, allocator) catch @panic("out of memory");
+                        defer solution.deinit(allocator);
 
-                        return &solution.steps;
-                    } else |_| {}
+                        std.zon.stringify.serializeArbitraryDepth(solution, .{}, output.writer()) catch @panic("out of memory");
+                        output.append('\n') catch @panic("out of memory");
+                    } else |_| {
+                        // output.writer().print("{}: {}\n", .{ t, err }) catch @panic("out of memory");
+                    }
                 },
                 .structure => |structure| {
                     if (structural == comptime structure.ast.structural()) {
-                        const bindings = structure.matches(&expr) catch unreachable;
-                        const solution = structure.solve(&expr, bindings, allocator) catch unreachable;
+                        if (structure.matches(expr)) |bindings| {
+                            output.writer().print("{}: ", .{t}) catch @panic("out of memory");
 
-                        return &solution.steps;
+                            const solution = structure.solve(expr, bindings, allocator) catch @panic("out of memory");
+                            defer solution.deinit(allocator);
+
+                            std.zon.stringify.serializeArbitraryDepth(solution, .{}, output.writer()) catch @panic("out of memory");
+                            output.append('\n') catch @panic("out of memory");
+                        } else |_| {}
+                    } else {
+                        // output.writer().print("{}: doesn't match\n", .{t}) catch @panic("out of memory");
                     }
                 },
                 .identity => |identity| {
                     if (hash == comptime identity.ast.hash()) {
-                        const solution = identity.proof();
+                        output.writer().print("{}: ", .{t}) catch @panic("out of memory");
 
-                        return &solution.steps;
+                        const solution = identity.proof();
+                        std.zon.stringify.serializeArbitraryDepth(solution, .{}, output.writer()) catch @panic("out of memory");
+                        output.append('\n') catch @panic("out of memory");
+                    } else {
+                        // output.writer().print("{}: doesn't match\n", .{t}) catch @panic("out of memory");
                     }
                 },
             }
         }
-    } else |_| {
-        @panic("error");
+    } else |err| switch (err) {
+        error.OutOfMemory => @panic("out of memory"),
+        error.ParseZon => output.appendSlice("failed to parse ZON") catch @panic("out of memory"),
     }
 
-    return null;
+    const result_slice = output.toOwnedSlice() catch @panic("out of memory");
+
+    const new_ptr_addr: u64 = @intFromPtr(result_slice.ptr);
+    const result = (new_ptr_addr << 32) | result_slice.len;
+
+    return result;
 }

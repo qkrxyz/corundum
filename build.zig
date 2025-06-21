@@ -48,7 +48,7 @@ pub fn build(b: *std.Build) !void {
             \\            break :blk @TypeOf(@field(module, std.enums.tagName(Kind, name).?[std.mem.lastIndexOf(u8, std.enums.tagName(Kind, name).?, "/").? + 1 ..]));
             \\        }
             \\    } else {
-            \\        break :blk null;
+            \\        break :blk void;
             \\    }
             \\} {
             \\    if (inner.get(name)) |module| {
@@ -61,6 +61,8 @@ pub fn build(b: *std.Build) !void {
             \\            return @field(module, std.enums.tagName(Kind, name).?[std.mem.lastIndexOf(u8, std.enums.tagName(Kind, name).?, "/").? + 1 ..]);
             \\        }
             \\    }
+            \\
+            \\    return;
             \\}
             \\
             ,
@@ -78,7 +80,63 @@ pub fn build(b: *std.Build) !void {
             \\        }
             \\    }
             \\
-            \\    return kinds[0..length];
+            \\    const Metadata = struct {
+            \\        name: []const u8,
+            \\        score: usize,
+            \\    };
+            \\
+            \\    comptime var metadata: [std.meta.fields(Kind).len - length]Metadata = undefined;
+            \\    comptime var metadata_length: comptime_int = 0;
+            \\
+            \\    inline for (std.meta.fields(Kind)) |entry| {
+            \\        const tag_name = @tagName(@as(Kind, @enumFromInt(entry.value)));
+            \\        if (comptime std.mem.indexOf(u8, tag_name, "metadata") != null) {
+            \\            const target = @field(@This(), tag_name);
+            \\
+            \\            metadata[metadata_length] = .{
+            \\                .name = @field(target, "name"),
+            \\                .score = @field(target, "score"),
+            \\            };
+            \\            metadata_length += 1;
+            \\        }
+            \\    }
+            \\
+            \\    const metadata_slice = metadata[0..metadata_length];
+            \\
+            \\    comptime std.mem.sort(
+            \\        Metadata,
+            \\        metadata_slice,
+            \\        {},
+            \\        struct {
+            \\            fn sort(context: @TypeOf({}), lhs: Metadata, rhs: Metadata) bool {
+            \\                _ = context;
+            \\                return lhs.score > rhs.score;
+            \\            }
+            \\        }.sort,
+            \\    );
+            \\
+            \\    comptime var result: [length]Kind = undefined;
+            \\    comptime var result_len: comptime_int = 0;
+            \\
+            \\    inline for (metadata_slice) |m| {
+            \\        inline for (kinds[0..length]) |kind| {
+            \\            if (comptime std.mem.eql(u8, @tagName(kind)[0..std.mem.lastIndexOfScalar(u8, @tagName(kind), '/').?], m.name)) {
+            \\                if(comptime std.mem.indexOfScalar(Kind, result[0..result_len], kind) == null) {
+            \\                    comptime result[result_len] = kind;
+            \\                    result_len += 1;
+            \\                }
+            \\            }
+            \\        }
+            \\    }
+            \\
+            \\    inline for (kinds[0..length]) |kind| {
+            \\        if(comptime std.mem.indexOfScalar(Kind, result[0..result_len], kind) == null) {
+            \\            comptime result[result_len] = kind;
+            \\            result_len += 1;
+            \\        }
+            \\    }
+            \\
+            \\    return &result;
             \\}
             \\
             \\pub inline fn variants(comptime kind: Kind, comptime T: type) blk: {
@@ -103,7 +161,7 @@ pub fn build(b: *std.Build) !void {
             \\
             \\    if (@typeInfo(@TypeOf(module)) == .@"fn") return &.{};
             \\
-            \\    var result: [std.meta.fields(Kind).len]template.Variant(module.key, T) = undefined;
+            \\    comptime var result: [std.meta.fields(Kind).len]template.Variant(module.key, T) = undefined;
             \\    var length: comptime_int = 0;
             \\
             \\    inline for (std.meta.fields(Kind)) |entry| {
@@ -116,7 +174,7 @@ pub fn build(b: *std.Build) !void {
             \\
             \\    const slice = result[0..length];
             \\
-            \\    std.mem.sort(
+            \\    comptime std.mem.sort(
             \\        template.Variant(module.key, T),
             \\        slice,
             \\        {},
@@ -130,6 +188,7 @@ pub fn build(b: *std.Build) !void {
             \\
             \\    return slice.*;
             \\}
+            \\
             ,
         },
     );
@@ -140,10 +199,6 @@ pub fn build(b: *std.Build) !void {
         .name = "corundum",
         .root_module = root,
     });
-    library.entry = .disabled;
-    library.discard_local_symbols = true;
-    library.export_memory = true;
-    library.rdynamic = true;
     b.installArtifact(library);
 
     if (target.result.os.tag != .freestanding) {
@@ -165,6 +220,36 @@ pub fn build(b: *std.Build) !void {
         const run_step = b.step("run", "Run the executable");
         run_step.dependOn(&run_exe.step);
     }
+
+    // wasm
+    const wasm = b.addExecutable(.{
+        .name = "corundum",
+        .root_source_file = b.path("src/wasm.zig"),
+        .target = b.resolveTargetQuery(.{
+            .os_tag = .freestanding,
+            .ofmt = .wasm,
+            .cpu_arch = .wasm32,
+        }),
+        // .optimize = .ReleaseSmall,
+        .code_model = .small,
+        .strip = optimize != .Debug,
+        .error_tracing = optimize == .Debug,
+    });
+
+    wasm.entry = .disabled;
+    wasm.export_memory = true;
+    wasm.root_module.export_symbol_names = &.{
+        "solve",
+        "alloc",
+        "free",
+    };
+
+    wasm.root_module.addImport("corundum", root);
+
+    const wasm_install = b.addInstallArtifact(wasm, .{ .dest_dir = .{ .override = .{ .custom = "wasm" } } });
+
+    const wasm_step = b.step("wasm", "Generate a WASM library");
+    wasm_step.dependOn(&wasm_install.step);
 
     // docs
     const docs_step = b.step("docs", "Generate documentation");
@@ -188,6 +273,7 @@ fn modules(b: *std.Build, root: *std.Build.Module, tests: *std.Build.Step.Run) !
         if (std.mem.indexOf(u8, entry.name, ".zig") != entry.name.len - 4) continue;
         if (std.mem.eql(u8, "root.zig", entry.name)) continue;
         if (std.mem.eql(u8, "main.zig", entry.name)) continue;
+        if (std.mem.eql(u8, "wasm.zig", entry.name)) continue;
 
         try submodules(b, root, entry, "src", tests);
     }
@@ -317,13 +403,16 @@ pub fn generate(
     var files = std.ArrayList(File).init(b.allocator);
     defer files.deinit();
 
+    var metadata = std.ArrayList(File).init(b.allocator);
+    defer metadata.deinit();
+
     var walker = try (try std.fs.cwd().openDir(options.directory, .{ .iterate = true })).walk(b.allocator);
     defer walker.deinit();
 
     // collect all files
     while (try walker.next()) |entry| {
         if (entry.kind != .file) continue;
-        if (!std.mem.endsWith(u8, entry.path, ".zig")) continue;
+        if (!std.mem.endsWith(u8, entry.path, ".zig") and !std.mem.endsWith(u8, entry.path, ".zon")) continue;
         if (std.mem.indexOf(u8, entry.basename, "._") == 0) continue;
 
         const path = try std.mem.replaceOwned(u8, b.allocator, entry.path, "\\", "/");
@@ -335,7 +424,11 @@ pub fn generate(
         };
         try files.append(info);
 
-        if (info.basename[0] != '_') {
+        if (std.mem.endsWith(u8, entry.basename, ".zon")) {
+            try metadata.append(info);
+        }
+
+        if (info.basename[0] != '_' and !std.mem.endsWith(u8, entry.basename, ".zon")) {
             try generated.appendSlice(b.fmt("        .@\"{s}\" = @import(\"{s}\"),\n", .{ info.name, info.name }));
         }
     }
@@ -347,6 +440,12 @@ pub fn generate(
 
     try generated.appendSlice(options.get_code);
     try generated.appendSlice(options.additional_code);
+
+    for (metadata.items) |info| {
+        if (info.basename[0] != '_') {
+            try generated.appendSlice(b.fmt("const @\"{s}\" = @import(\"{s}\");\n", .{ info.name, info.name }));
+        }
+    }
 
     try generated.appendSlice(
         \\
@@ -391,21 +490,23 @@ pub fn generate(
         imports(root, submodule);
         module.addImport(info.name, submodule);
 
-        const submodule_test = b.addTest(.{
-            .root_module = submodule,
-            .name = try std.mem.replaceOwned(
-                u8,
-                b.allocator,
-                info.name,
-                "/",
-                ".",
-            ),
-            .target = root.resolved_target,
-            .optimize = root.optimize orelse .Debug,
-        });
+        if (!std.mem.endsWith(u8, info.entry_path, ".zon")) {
+            const submodule_test = b.addTest(.{
+                .root_module = submodule,
+                .name = try std.mem.replaceOwned(
+                    u8,
+                    b.allocator,
+                    info.name,
+                    "/",
+                    ".",
+                ),
+                .target = root.resolved_target,
+                .optimize = root.optimize orelse .Debug,
+            });
 
-        const run_subtest = b.addRunArtifact(submodule_test);
-        module_test.step.dependOn(&run_subtest.step);
+            const run_subtest = b.addRunArtifact(submodule_test);
+            module_test.step.dependOn(&run_subtest.step);
+        }
     }
 
     if (root.import_table.get(options.parent_name)) |parent| {

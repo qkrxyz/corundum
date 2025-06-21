@@ -10,7 +10,8 @@ A scalable, "simple" and fast math engine with step-by-step instructions, writte
 - [ ] Number division, exponentiation
 - [ ] Builtin functions - square root, logarithms, etc.
 - [ ] __Refactor__ change everything to utilize `.zon` files for metadata/static strings and be l18n/i10n ready, along with expanded test coverage
-- [ ] A working prototype of a web app that utilizes this engine
+- [x] ~~Template scoring~~
+- [x] ~~A working prototype of a web app that utilizes this engine~~
 - [ ] Implement fractions and equations, __refactor__ division to use fractions where possible
 - [ ] Add basic algebra support
 - [ ] Add "actions"
@@ -36,7 +37,7 @@ Currently, you can only use `f16`, `f32`, `f64` and `f128` (support for arbitrar
 At build time, the `build.zig` script iterates over all file entries in the [templates](./templates/) directory, which get added to a central inventory (similar to the [`inventory`](https://crates.io/crates/inventory) crate in Rust).
 After that, you can use them by calling `template.Templates.get` or `template.Templates.all` to get them all.
 
-At runtime, the engine iterates over all _templates_ (the engine also collects variants, but they are excluded from `template.Templates.all`) and does different things according to the template kind:
+At runtime, the engine iterates over all _templates_ (the engine also collects variants, but they are excluded from `template.Templates.all`), sorts them according to their "score" contained in a `metadata.zon` file (e.g. $2 + 3$ would first match to `core/number/addition` rather than `core/number/n-ary/addition`, since all templates in `core/number` have a higher score than `core/number/n-ary`) and does different things according to the template kind:
 
 If the template is an __identity__:
 
@@ -60,8 +61,8 @@ A template can have its own actions, which can be treated as "templates" but are
 
 This trigonometric proof is a great example of this:
 
-$\frac{1 + 2sin(x)cos(x)}{cos^2(x)} = (1 + tg(x))^2$  
-$L = \frac{1 + 2sin(x)cos(x)}{cos^2(x)} = \frac{sin^2(x) + cos^2(x) + 2sin(x)cos(x)}{cos^2(x)} = \frac{(sin(x) + cos(x))^2}{cos^2(x)}$  
+$\frac{1 + 2sin(x)cos(x)}{cos^2(x)} = (1 + tg(x))^2$
+$L = \frac{1 + 2sin(x)cos(x)}{cos^2(x)} = \frac{sin^2(x) + cos^2(x) + 2sin(x)cos(x)}{cos^2(x)} = \frac{(sin(x) + cos(x))^2}{cos^2(x)}$
 $R = (1 + tg(x))^2 = 1 + 2tg(x) + tg^2(x) = 1 + \frac{2sin(x)}{cos(x)} + \frac{sin^2(x)}{cos^2(x)} = \frac{cos^2(x)}{cos^2(x)} + \frac{2sin(x)}{cos(x)} + \frac{sin^2(x)}{cos^2(x)} = \frac{sin^2(x) + 2sin(x)cos(x) + cos^2(x)}{cos^2(x)} = \frac{(sin(x) + cos(x))^2}{cos^2(x)}$
 
 Here, the engine would get "stuck" and try to apply an action for the $1$ in the numerator of the left side. It would notice that $1 = sin^2(x) + cos^2(x)$, and try again to match the entire expression. It would again fail, and this time notice that $sin^2(x) + cos^2(x) + 2sin(x)cos(x)$ can be reordered to form a perfect square, which can be simplified.
@@ -77,6 +78,7 @@ While creating this project, AI was involved in these changes/additions:
 - migration from `std.StaticStringMap`/`std.StringHashMap` to `std.EnumMap` and enums in templates for type safety and optimizations
 - iterating over the `templates` directory only once in `build.zig` - previously the build script created an empty file, iterated, created another file with the templates' data and overwrote the first one
 - idea of "n-ary" (variadic) functions
+- JS side of the WASM implementation
 
 Whilst the LLM provided the code for these ideas, I decided to implement everything myself (for example: Claude suggested I try to use enums for bindings. I agreed and decided to add them, which also meant that I needed to spend a whole day trying to integrate them, since each template has different keys and therefore it's not as straightforward to iterate over them (or even collect them into a concrete type), see [build.zig](./build.zig). The idea eventually also "infected" the actual template inventory, which now also uses a `std.EnumMap` with the keys being template names; it previously used a `std.StaticStringMap`).
 
@@ -88,4 +90,4 @@ Licensed under the [MIT License](./LICENSE).
 
 ## Cat picture
 
-![a white and lightly brown cat sleeping on a bed, curled up](./assets/PXL_20250605_133823374.jpg)
+![a white and slightly brown cat sleeping on a bed, curled up](./assets/PXL_20250605_133823374.jpg)

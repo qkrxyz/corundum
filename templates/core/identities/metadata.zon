@@ -1,0 +1,4 @@
+.{
+    .name = "core/identities",
+    .score = 100,
+}

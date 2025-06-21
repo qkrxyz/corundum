@@ -3,15 +3,15 @@ pub const Key = enum {
     b,
 };
 
-pub fn @"a × 0"(comptime T: type) Template(Key, T) {
+pub fn @"a ÷ 0"(comptime T: type) Template(Key, T) {
     const Impl = struct {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             const bindings = Bindings(Key, T).init(.{});
 
             if (expression.* != .binary) return error.NotApplicable;
-            if (expression.binary.operation != .multiplication) return error.NotApplicable;
+            if (expression.binary.operation != .division) return error.NotApplicable;
 
-            if ((expression.binary.left.* == .number and expression.binary.left.number == 0.0) or (expression.binary.right.* == .number and expression.binary.right.number == 0.0)) {
+            if (expression.binary.right.* == .number and expression.binary.right.number == 0.0) {
                 return bindings;
             }
 
@@ -24,8 +24,12 @@ pub fn @"a × 0"(comptime T: type) Template(Key, T) {
 
             solution.steps[0] = try (Step(T){
                 .before = try expression.clone(allocator),
-                .after = try (Expression(T){ .number = 0 }).clone(allocator),
-                .description = try allocator.dupe(u8, "Anything multiplied by 0 is equal to 0"),
+                .after = try (Expression(T){ .function = .{
+                    .name = "error",
+                    .arguments = @constCast(&[_]*const Expression(T){&.{ .variable = "Cannot divide by zero" }}),
+                    .body = &.{ .variable = "Division by zero is undefined" },
+                } }).clone(allocator),
+                .description = try allocator.dupe(u8, ""),
                 .substeps = try allocator.alloc(*const Step(T), 0),
             }).clone(allocator);
 
@@ -34,32 +38,32 @@ pub fn @"a × 0"(comptime T: type) Template(Key, T) {
     };
 
     return Template(Key, T){ .dynamic = .{
-        .name = "Multiplication: a × 0",
+        .name = "Division: a ÷ 0",
         .matches = Impl.matches,
         .solve = Impl.solve,
         .variants = &.{},
     } };
 }
 
-test @"a × 0" {
+test @"a ÷ 0" {
     inline for (.{ f32, f64, f128 }) |T| {
-        const Multiplication = @"a × 0"(T);
+        const Division = @"a ÷ 0"(T);
 
-        const one_times_zero = Expression(T){ .binary = .{
+        const one_div_zero = Expression(T){ .binary = .{
             .left = &.{ .number = 1.0 },
-            .operation = .multiplication,
+            .operation = .division,
             .right = &.{ .number = 0.0 },
         } };
 
-        const zero_times_x = Expression(T){ .binary = .{
+        const zero_div_one = Expression(T){ .binary = .{
             .left = &.{ .number = 0.0 },
-            .operation = .multiplication,
-            .right = &.{ .variable = "x" },
+            .operation = .division,
+            .right = &.{ .number = 1.0 },
         } };
 
-        const one_times_function = Expression(T){ .binary = .{
+        const one_div_function = Expression(T){ .binary = .{
             .left = &.{ .number = 1.0 },
-            .operation = .multiplication,
+            .operation = .division,
             .right = &.{ .function = .{
                 .name = "x",
                 .arguments = @constCast(&[_]*const Expression(T){}),
@@ -67,38 +71,39 @@ test @"a × 0" {
             } },
         } };
 
-        var bindings = try Multiplication.dynamic.matches(&one_times_zero);
+        var bindings = try Division.dynamic.matches(&one_div_zero);
         try testing.expectEqual(null, bindings.get(.a));
         try testing.expectEqual(null, bindings.get(.b));
 
-        bindings = try Multiplication.dynamic.matches(&zero_times_x);
-        try testing.expectEqual(null, bindings.get(.a));
-        try testing.expectEqual(null, bindings.get(.b));
-
-        try testing.expectError(error.NoZero, Multiplication.dynamic.matches(&one_times_function));
+        try testing.expectError(error.NoZero, Division.dynamic.matches(&zero_div_one));
+        try testing.expectError(error.NoZero, Division.dynamic.matches(&one_div_function));
     }
 }
 
-test "a × 0(T).solve" {
+test "a ÷ 0(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
-        const Multiplication = @"a × 0"(T);
+        const Division = @"a ÷ 0"(T);
 
-        const one_times_zero = Expression(T){ .binary = .{
+        const one_div_zero = Expression(T){ .binary = .{
             .left = &.{ .number = 1.0 },
-            .operation = .multiplication,
+            .operation = .division,
             .right = &.{ .number = 0.0 },
         } };
 
-        const bindings = try Multiplication.dynamic.matches(&one_times_zero);
-        const solution = try Multiplication.dynamic.solve(&one_times_zero, bindings, testing.allocator);
+        const bindings = try Division.dynamic.matches(&one_div_zero);
+        const solution = try Division.dynamic.solve(&one_div_zero, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
             .steps = @constCast(&[_]*const Step(T){
                 &.{
-                    .before = &one_times_zero,
-                    .after = &.{ .number = 0.0 },
-                    .description = "Anything multiplied by 0 is equal to 0",
+                    .before = &one_div_zero,
+                    .after = &.{ .function = .{
+                        .name = "error",
+                        .arguments = @constCast(&[_]*const Expression(T){&.{ .variable = "Cannot divide by zero" }}),
+                        .body = &.{ .variable = "Division by zero is undefined" },
+                    } },
+                    .description = "",
                     .substeps = &.{},
                 },
             }),

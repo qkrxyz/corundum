@@ -14,7 +14,7 @@ pub fn main() !void {
     defer if (is_debug) {
         _ = debug_allocator.deinit();
     };
-    
+
     var arena = std.heap.ArenaAllocator.init(gpa);
     defer arena.deinit();
 
@@ -22,6 +22,11 @@ pub fn main() !void {
 
     const arguments = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, arguments);
+
+    std.debug.print("templates (in order):\n", .{});
+    inline for (corundum.template.Templates.all()) |template| {
+        std.debug.print("{}\n", .{template});
+    }
 
     if (arguments.len >= 2) {
         var diagnostics: std.zon.parse.Diagnostics = .{};
@@ -37,17 +42,15 @@ pub fn main() !void {
         };
 
         try benchmark2(allocator, &parsed);
-        // std.debug.print("parsed: {any}\n\n", .{parsed});
+        std.debug.print("parsed: {any}\n\n", .{parsed});
 
-        // try run(benchmark2, .{ allocator, &parsed });
+        try run(benchmark2, .{ allocator, &parsed });
     }
-
-    // try run(benchmark, .{ allocator, 2.5, 3.5 });
 }
 
 fn run(function: anytype, arguments: anytype) !void {
     // benchmarks
-    const ITERATIONS = 10000;
+    const ITERATIONS = 100000;
     var progress = std.Progress.start(.{ .estimated_total_items = ITERATIONS, .root_name = "Running benchmarks..." });
 
     var results: [ITERATIONS]u64 = undefined;
@@ -106,7 +109,7 @@ fn benchmark2(allocator: std.mem.Allocator, expression: *const corundum.expressi
     const structural = expression.structural();
     const hash = expression.hash();
 
-    const stderr = std.io.getStdErr().writer();
+    // const stderr = std.io.getStdErr().writer();
 
     inline for (corundum.template.Templates.all()) |template| {
         const value = corundum.template.Templates.get(template);
@@ -115,65 +118,46 @@ fn benchmark2(allocator: std.mem.Allocator, expression: *const corundum.expressi
                 const bindings = if (@typeInfo(@TypeOf(dynamic.matches)).@"fn".params.len == 2) dynamic.matches(expression, allocator) else dynamic.matches(expression);
 
                 if (bindings) |b| {
-                    std.debug.print("{}: ", .{template});
+                    // std.debug.print("{}: ", .{template});
                     const solution = try dynamic.solve(expression, b, allocator);
+                    std.mem.doNotOptimizeAway(solution);
                     defer solution.deinit(allocator);
 
-                    try std.zon.stringify.serializeArbitraryDepth(solution, .{}, stderr);
-                    std.debug.print("\n", .{});
-                } else |err| {
-                    std.debug.print("{}: {}\n", .{ template, err });
+                    // try std.zon.stringify.serializeArbitraryDepth(solution, .{}, stderr);
+                    // std.debug.print("\n", .{});
+                } else |_| {
+                    // std.debug.print("{}: {}\n", .{ template, err });
                 }
             },
             .structure => |structure| {
                 if (structural == comptime structure.ast.structural()) {
-                    std.debug.print("{}: ", .{template});
+                    // std.debug.print("{}: ", .{template});
 
-                    const bindings = try structure.matches(expression);
-                    const solution = try structure.solve(expression, bindings, allocator);
-                    defer solution.deinit(allocator);
+                    if (structure.matches(expression)) |bindings| {
+                        const solution = try structure.solve(expression, bindings, allocator);
+                        std.mem.doNotOptimizeAway(solution);
+                        defer solution.deinit(allocator);
 
-                    try std.zon.stringify.serializeArbitraryDepth(solution, .{}, stderr);
-                    std.debug.print("\n", .{});
+                        // try std.zon.stringify.serializeArbitraryDepth(solution, .{}, stderr);
+                        // std.debug.print("\n", .{});
+                    } else |_| {}
                 } else {
-                    std.debug.print("{}: doesn't match\n", .{template});
+                    // std.debug.print("{}: doesn't match\n", .{template});
                 }
             },
             .identity => |identity| {
                 if (hash == comptime identity.ast.hash()) {
                     // std.debug.print("{}: {any}\n", .{ template, hash == comptime identity.ast.hash() });
-                    std.debug.print("{}: ", .{template});
+                    // std.debug.print("{}: ", .{template});
 
                     const solution = identity.proof();
-                    try std.zon.stringify.serializeArbitraryDepth(solution, .{}, stderr);
-                    std.debug.print("\n", .{});
+                    std.mem.doNotOptimizeAway(solution);
+                    // try std.zon.stringify.serializeArbitraryDepth(solution, .{}, stderr);
+                    // std.debug.print("\n", .{});
                 } else {
-                    std.debug.print("{}: doesn't match\n", .{template});
+                    // std.debug.print("{}: doesn't match\n", .{template});
                 }
             },
         }
     }
-}
-
-fn benchmark(allocator: std.mem.Allocator, a: f64, b: f64) !void {
-    @setFloatMode(.optimized);
-
-    const multiplication = corundum.template.Templates.get(.@"core/number/multiplication");
-    const bindings = try multiplication.module(f64).structure.matches(&corundum.expression.Expression(f64){
-        .binary = .{
-            .operation = .multiplication,
-            .left = &.{ .number = a },
-            .right = &.{ .number = b },
-        },
-    });
-    // std.debug.print("bindings: {any}\n", .{bindings});
-
-    const solution = try multiplication.module(f64).structure.solve(&corundum.expression.Expression(f64){
-        .binary = .{
-            .operation = .multiplication,
-            .left = &.{ .number = a },
-            .right = &.{ .number = b },
-        },
-    }, bindings, allocator);
-    defer solution.deinit(allocator);
 }

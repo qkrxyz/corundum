@@ -20,7 +20,7 @@ pub fn @"a ÷ 0"(comptime T: type) Variant(Key, T) {
                         .arguments = @constCast(&[_]*const Expression(T){
                             &.{ .variable = "Cannot divide by zero" },
                         }),
-                        .body = null,
+                        .body = &.{ .variable = "Division by zero is undefined" },
                     },
                 }).clone(allocator),
                 .description = "",
@@ -49,9 +49,25 @@ test @"a ÷ 0" {
         } };
 
         const bindings = try Division.matches(&one_div_zero);
-        const expected = Bindings(Key, T).init(.{});
+        const solution = try Division.solve(&one_div_zero, bindings, testing.allocator);
+        defer solution.deinit(testing.allocator);
 
-        try testing.expectEqual(expected, bindings);
+        const expected = Solution(T){
+            .steps = @constCast(&[_]*const Step(T){
+                &.{
+                    .before = &one_div_zero,
+                    .after = &.{ .function = .{
+                        .name = "error",
+                        .arguments = @constCast(&[_]*const Expression(T){&.{ .variable = "Cannot divide by zero" }}),
+                        .body = &.{ .variable = "Division by zero is undefined" },
+                    } },
+                    .description = "",
+                    .substeps = &.{},
+                },
+            }),
+        };
+
+        try testing.expectEqualDeep(expected, solution);
     }
 }
 
