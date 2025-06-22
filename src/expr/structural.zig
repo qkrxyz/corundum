@@ -32,6 +32,7 @@ pub fn structural(comptime T: type, expression: *const Expression(T), hasher: an
             @call(.always_inline, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(expression.unary.operation)} });
         },
         .function => {
+            @call(.always_inline, Hasher.update, .{ hasher, expression.function.name });
             @call(.always_inline, Hasher.update, .{ hasher, &std.mem.toBytes(@as(usize, expression.function.arguments.len)) });
 
             for (expression.function.arguments) |argument| {
@@ -262,20 +263,21 @@ test "structural(function)" {
     const result = hasher.final();
 
     hasher = std.hash.XxHash64.init(0);
-    const cos = Expression(f64){ .function = .{
-        .name = "cos",
+    const sin2 = Expression(f64){ .function = .{
+        .name = "sin",
         .arguments = @ptrCast(@constCast(&[_]*const Expression(f64){
             &.{ .variable = "y" },
         })),
         .body = null,
     } };
-    structural(f64, &cos, &hasher);
+    structural(f64, &sin2, &hasher);
     const result2 = hasher.final();
 
     const expected = blk: {
         hasher = std.hash.XxHash64.init(0);
 
         hasher.update(&[_]u8{@intFromEnum(expr.Kind.function)});
+        hasher.update("sin");
         hasher.update(&std.mem.toBytes(@as(usize, 1)));
         hasher.update(&[_]u8{@intFromEnum(expr.Kind.variable)});
 

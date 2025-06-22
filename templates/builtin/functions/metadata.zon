@@ -1,0 +1,4 @@
+.{
+    .name = "builtin/functions",
+    .score = 500,
+}

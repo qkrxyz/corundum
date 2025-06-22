@@ -33,7 +33,7 @@ export fn solve(string: [*]u8, length: usize) u64 {
                     const bindings = if (@typeInfo(@TypeOf(dynamic.matches)).@"fn".params.len == 2) dynamic.matches(expr, allocator) else dynamic.matches(expr);
 
                     if (bindings) |b| {
-                        output.writer().print("{}: ", .{t}) catch @panic("out of memory");
+                        output.writer().print("{s}: ", .{dynamic.name}) catch @panic("out of memory");
                         const solution = dynamic.solve(expr, b, allocator) catch @panic("out of memory");
                         defer solution.deinit(allocator);
 
@@ -46,7 +46,7 @@ export fn solve(string: [*]u8, length: usize) u64 {
                 .structure => |structure| {
                     if (structural == comptime structure.ast.structural()) {
                         if (structure.matches(expr)) |bindings| {
-                            output.writer().print("{}: ", .{t}) catch @panic("out of memory");
+                            output.writer().print("{s}: ", .{structure.name}) catch @panic("out of memory");
 
                             const solution = structure.solve(expr, bindings, allocator) catch @panic("out of memory");
                             defer solution.deinit(allocator);
@@ -60,7 +60,7 @@ export fn solve(string: [*]u8, length: usize) u64 {
                 },
                 .identity => |identity| {
                     if (hash == comptime identity.ast.hash()) {
-                        output.writer().print("{}: ", .{t}) catch @panic("out of memory");
+                        output.writer().print("{s}: ", .{identity.name}) catch @panic("out of memory");
 
                         const solution = identity.proof();
                         std.zon.stringify.serializeArbitraryDepth(solution, .{}, output.writer()) catch @panic("out of memory");

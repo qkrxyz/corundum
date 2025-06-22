@@ -2,6 +2,7 @@ pub const Key = usize;
 
 pub fn addition(comptime T: type) Template(Key, T) {
     const Impl = struct {
+        // MARK: .matches()
         fn matches(expression: *const Expression(T), allocator: std.mem.Allocator) anyerror!Bindings(Key, T) {
             if (expression.* != .function) return error.NotApplicable;
             if (!std.mem.eql(u8, expression.function.name, "add")) return error.WrongFunctionSignature;
@@ -16,6 +17,7 @@ pub fn addition(comptime T: type) Template(Key, T) {
             return bindings;
         }
 
+        // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             var steps = std.ArrayList(*const Step(T)).init(allocator);
 
@@ -83,6 +85,7 @@ pub fn addition(comptime T: type) Template(Key, T) {
         }
     };
 
+    // MARK: template
     return Template(Key, T){ .dynamic = .{
         .name = "N-ary function: number addition",
         .matches = Impl.matches,
@@ -91,6 +94,7 @@ pub fn addition(comptime T: type) Template(Key, T) {
     } };
 }
 
+// MARK: tests
 test addition {
     inline for (.{ f32, f64, f128 }) |T| {
         const Addition = addition(T);

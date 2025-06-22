@@ -2,6 +2,7 @@ const Key = template.Templates.get(.@"core/number/addition").key;
 
 pub fn @"a + 0"(comptime T: type) Variant(Key, T) {
     const Impl = struct {
+        // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             var bindings = Bindings(Key, T).init(.{});
 
@@ -16,6 +17,7 @@ pub fn @"a + 0"(comptime T: type) Variant(Key, T) {
             return bindings;
         }
 
+        // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             const a = bindings.get(.a).?;
             const solution = try Solution(T).init(1, allocator);
@@ -31,6 +33,7 @@ pub fn @"a + 0"(comptime T: type) Variant(Key, T) {
         }
     };
 
+    // MARK: variant
     return Variant(Key, T){
         .name = "Number addition: a + 0",
         .matches = Impl.matches,
@@ -39,6 +42,7 @@ pub fn @"a + 0"(comptime T: type) Variant(Key, T) {
     };
 }
 
+// MARK: tests
 test @"a + 0" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Addition = @"a + 0"(T);

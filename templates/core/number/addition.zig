@@ -7,6 +7,7 @@ pub fn addition(comptime T: type) Template(Key, T) {
     const variants = @constCast(&template.Templates.variants(.@"core/number/addition", T));
 
     const Impl = struct {
+        // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             var bindings = Bindings(Key, T).init(.{});
 
@@ -16,6 +17,7 @@ pub fn addition(comptime T: type) Template(Key, T) {
             return bindings;
         }
 
+        // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             @setFloatMode(.optimized);
 
@@ -74,6 +76,7 @@ pub fn addition(comptime T: type) Template(Key, T) {
         }
     };
 
+    // MARK: template
     return Template(Key, T){
         .structure = .{
             .name = "Number addition",
@@ -91,6 +94,7 @@ pub fn addition(comptime T: type) Template(Key, T) {
     };
 }
 
+// MARK: tests
 test addition {
     const Addition = addition(f64);
     const one_plus_two = Expression(f64){ .binary = .{

@@ -2,12 +2,14 @@ const Key = template.Templates.get(.@"core/number/division").key;
 
 pub fn @"a ÷ 0"(comptime T: type) Variant(Key, T) {
     const Impl = struct {
+        // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             if (expression.binary.right.number == 0.0) return Bindings(Key, T).init(.{});
 
             return error.NotApplicable;
         }
 
+        // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             _ = bindings;
 
@@ -30,6 +32,7 @@ pub fn @"a ÷ 0"(comptime T: type) Variant(Key, T) {
         }
     };
 
+    // MARK: variant
     return Variant(Key, T){
         .name = "Number division: a ÷ 0",
         .matches = Impl.matches,
@@ -38,6 +41,7 @@ pub fn @"a ÷ 0"(comptime T: type) Variant(Key, T) {
     };
 }
 
+// MARK: tests
 test @"a ÷ 0" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Division = @"a ÷ 0"(T);

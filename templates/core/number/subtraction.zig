@@ -7,6 +7,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
     const variants = @constCast(&template.Templates.variants(.@"core/number/subtraction", T));
 
     const Impl = struct {
+        // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             var bindings = Bindings(Key, T).init(.{});
 
@@ -16,6 +17,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
             return bindings;
         }
 
+        // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             @setFloatMode(.optimized);
 
@@ -28,7 +30,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
             const a = bindings.get(.a).?.number;
             const b = bindings.get(.b).?.number;
 
-            // ±a - b
+            // MARK: ±a - b
             if (b > 0.0) {
                 const solution = try Solution(T).init(1, allocator);
 
@@ -42,7 +44,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
                 return solution;
             }
 
-            // ±a - (-b) = ±a + b
+            // MARK: ±a - (-b) = ±a + b
             const addition = template.Templates.get(.@"core/number/addition");
             const solution = try Solution(T).init(2, allocator);
 
@@ -75,6 +77,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
         }
     };
 
+    // MARK: template
     return Template(Key, T){
         .structure = .{
             .name = "Number subtraction",
@@ -92,6 +95,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
     };
 }
 
+// MARK: tests
 test subtraction {
     const Subtraction = subtraction(f64);
     const two_minus_one = Expression(f64){ .binary = .{

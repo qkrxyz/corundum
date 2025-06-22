@@ -5,6 +5,7 @@ pub const Key = enum {
 
 pub fn @"a × 0"(comptime T: type) Template(Key, T) {
     const Impl = struct {
+        // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             const bindings = Bindings(Key, T).init(.{});
 
@@ -18,6 +19,7 @@ pub fn @"a × 0"(comptime T: type) Template(Key, T) {
             return error.NoZero;
         }
 
+        // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             _ = bindings;
             const solution = try Solution(T).init(1, allocator);
@@ -33,6 +35,7 @@ pub fn @"a × 0"(comptime T: type) Template(Key, T) {
         }
     };
 
+    // MARK: template
     return Template(Key, T){ .dynamic = .{
         .name = "Multiplication: a × 0",
         .matches = Impl.matches,
@@ -41,6 +44,7 @@ pub fn @"a × 0"(comptime T: type) Template(Key, T) {
     } };
 }
 
+// MARK: tests
 test @"a × 0" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Multiplication = @"a × 0"(T);

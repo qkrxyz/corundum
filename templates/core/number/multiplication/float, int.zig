@@ -2,6 +2,7 @@ const Key = template.Templates.get(.@"core/number/multiplication").key;
 
 pub fn @"float, int"(comptime T: type) Variant(Key, T) {
     const Impl = struct {
+        // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             var bindings = Bindings(Key, T).init(.{});
 
@@ -24,6 +25,7 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
             return bindings;
         }
 
+        // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             const I = @Type(.{ .int = .{ .bits = @bitSizeOf(T), .signedness = .unsigned } });
 
@@ -36,6 +38,7 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
             const c = @divFloor(a, 1.0);
             const d = a - c;
 
+            // MARK: expand
             try steps.append(try (Step(T){
                 .before = try expression.clone(allocator),
                 .after = try (Expression(T){ .binary = .{
@@ -59,7 +62,7 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
                 .substeps = try allocator.alloc(*const Step(T), 0),
             }).clone(allocator));
 
-            // simplify
+            // MARK: simplify
             const bc = b * c;
             const bd = b * d;
 
@@ -147,7 +150,7 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
                 },
             }).clone(allocator));
 
-            // add
+            // MARK: add
             const addition = template.Templates.get(.@"core/number/addition");
             const new_bindings = Bindings(addition.key, T).init(.{
                 .a = steps.items[1].after.?.binary.left,
@@ -167,6 +170,7 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
         }
     };
 
+    // MARK: variant
     return Variant(Key, T){
         .name = "Number multiplication: float × integer",
         .matches = Impl.matches,
@@ -175,6 +179,7 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
     };
 }
 
+// MARK: tests
 test "float, int(T).matches" {
     const Multiplication = @"float, int"(f64);
 

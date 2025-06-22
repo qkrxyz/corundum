@@ -230,8 +230,7 @@ pub fn build(b: *std.Build) !void {
             .ofmt = .wasm,
             .cpu_arch = .wasm32,
         }),
-        // .optimize = .ReleaseSmall,
-        .code_model = .small,
+        .optimize = optimize,
         .strip = optimize != .Debug,
         .error_tracing = optimize == .Debug,
     });

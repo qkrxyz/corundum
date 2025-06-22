@@ -1,17 +1,23 @@
-pub const Key = enum {};
+pub const Key = enum {
+    function,
+};
 
 pub fn length(comptime T: type) Template(Key, T) {
     const Impl = struct {
+        // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             if (expression.* != .function) return error.NotApplicable;
 
-            const bindings = Bindings(Key, T).init(.{});
+            const bindings = Bindings(Key, T).init(.{
+                .function = expression,
+            });
             return bindings;
         }
 
+        // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            _ = bindings;
-            const len = expression.function.arguments.len;
+            const function = bindings.get(.function).?;
+            const len = function.function.arguments.len;
 
             const solution = try Solution(T).init(1, allocator);
             solution.steps[0] = try (Step(T){
@@ -25,6 +31,7 @@ pub fn length(comptime T: type) Template(Key, T) {
         }
     };
 
+    // MARK: template
     return Template(Key, T){
         .dynamic = .{
             .name = "N-ary function: length",
@@ -35,6 +42,7 @@ pub fn length(comptime T: type) Template(Key, T) {
     };
 }
 
+// MARK: tests
 test length {
     inline for (.{ f32, f64, f128 }) |T| {
         const Length = length(T);

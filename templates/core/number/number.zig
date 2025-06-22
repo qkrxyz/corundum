@@ -4,11 +4,13 @@ pub const Key = enum {
 
 pub fn number(comptime T: type) Template(Key, T) {
     const Impl = struct {
+        // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             const bindings = Bindings(Key, T).init(.{ .x = expression });
             return bindings;
         }
 
+        // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             const solution = try Solution(T).init(1, allocator);
 
@@ -23,6 +25,7 @@ pub fn number(comptime T: type) Template(Key, T) {
         }
     };
 
+    // MARK: template
     return Template(Key, T){
         .structure = .{
             .name = "Number",
@@ -34,6 +37,7 @@ pub fn number(comptime T: type) Template(Key, T) {
     };
 }
 
+// MARK: tests
 test number {
     const Number = number(f64);
     const one = Expression(f64){ .number = 1.0 };

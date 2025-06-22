@@ -2,6 +2,7 @@ const Key = template.Templates.get(.@"core/number/multiplication").key;
 
 pub fn @"small float, int"(comptime T: type) Variant(Key, T) {
     const Impl = struct {
+        // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             var bindings = Bindings(Key, T).init(.{});
 
@@ -28,13 +29,14 @@ pub fn @"small float, int"(comptime T: type) Variant(Key, T) {
             return bindings;
         }
 
+        // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             const I = @Type(.{ .int = .{ .bits = @bitSizeOf(T), .signedness = .unsigned } });
 
             const a, const b = .{ bindings.get(.a).?.number, bindings.get(.b).?.number };
             var steps = try std.ArrayList(*const Step(T)).initCapacity(allocator, 2);
 
-            // reinterpret d as integer; multiply
+            // MARK: reinterpret d as integer; multiply
             const a_str = try std.fmt.allocPrint(allocator, "{d}", .{a});
             defer allocator.free(a_str);
 
@@ -49,7 +51,7 @@ pub fn @"small float, int"(comptime T: type) Variant(Key, T) {
                 .substeps = try allocator.alloc(*const Step(T), 0),
             }).clone(allocator));
 
-            // shift
+            // MARK: shift
             const b_len = b_len_blk: {
                 const truncated: I = @intFromFloat(@trunc(b));
 
@@ -75,6 +77,7 @@ pub fn @"small float, int"(comptime T: type) Variant(Key, T) {
         }
     };
 
+    // MARK: variant
     return Variant(Key, T){
         .name = "Number multiplication: small float × integer",
         .matches = Impl.matches,
@@ -83,6 +86,7 @@ pub fn @"small float, int"(comptime T: type) Variant(Key, T) {
     };
 }
 
+// MARK: tests
 test "small float, int(T).matches" {
     const Multiplication = @"small float, int"(f64);
 

@@ -4,6 +4,7 @@ pub const Key = enum {
 
 pub fn parenthesis(comptime T: type) Template(Key, T) {
     const Impl = struct {
+        // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             if (expression.* != .parenthesis) return error.NotApplicable;
 
@@ -13,6 +14,7 @@ pub fn parenthesis(comptime T: type) Template(Key, T) {
             return bindings;
         }
 
+        // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             const inner = bindings.get(.inner).?;
 
@@ -29,6 +31,7 @@ pub fn parenthesis(comptime T: type) Template(Key, T) {
         }
     };
 
+    // MARK: template
     return Template(Key, T){
         .dynamic = .{
             .name = "Rewrite: parenthesis",
@@ -39,6 +42,7 @@ pub fn parenthesis(comptime T: type) Template(Key, T) {
     };
 }
 
+// MARK: tests
 test parenthesis {
     inline for (.{ f32, f64, f128 }) |T| {
         const Parens = parenthesis(T);

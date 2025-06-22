@@ -2,6 +2,7 @@ const Key = template.Templates.get(.@"core/number/multiplication").key;
 
 pub fn @"small float, small float"(comptime T: type) Variant(Key, T) {
     const Impl = struct {
+        // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             var bindings = Bindings(Key, T).init(.{});
 
@@ -27,6 +28,7 @@ pub fn @"small float, small float"(comptime T: type) Variant(Key, T) {
             return result;
         }
 
+        // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             const a = bindings.get(.a).?.number;
             const b = bindings.get(.b).?.number;
@@ -68,6 +70,7 @@ pub fn @"small float, small float"(comptime T: type) Variant(Key, T) {
         }
     };
 
+    // MARK: variant
     return Variant(Key, T){
         .name = "Number multiplication: small float × small float",
         .matches = Impl.matches,
@@ -75,6 +78,8 @@ pub fn @"small float, small float"(comptime T: type) Variant(Key, T) {
         .score = 4,
     };
 }
+
+// TODO tests
 
 const std = @import("std");
 const testing = std.testing;

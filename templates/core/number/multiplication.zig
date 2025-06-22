@@ -7,6 +7,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
     const variants = @constCast(&template.Templates.variants(.@"core/number/multiplication", T));
 
     const Impl = struct {
+        // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             var bindings = Bindings(Key, T).init(.{});
 
@@ -16,6 +17,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
             return bindings;
         }
 
+        // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             @setFloatMode(.optimized);
 
@@ -42,7 +44,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
             const e = @divFloor(b, 1.0);
             const f = @mod(b, 1.0);
 
-            // expand
+            // MARK: expand
             try steps.append(try (Step(T){
                 .before = try expression.clone(allocator),
 
@@ -85,7 +87,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                 .substeps = try allocator.alloc(*const Step(T), 0),
             }).clone(allocator));
 
-            // simplify
+            // MARK: simplify
             const ce = c * e;
             const cf = c * f;
             const de = d * e;
@@ -170,7 +172,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                 },
             }).clone(allocator));
 
-            // add
+            // MARK: add
             try steps.append(try (Step(T){
                 .before = try steps.items[1].after.?.clone(allocator),
                 .after = try (Expression(T){ .number = ce + cf + de + df }).clone(allocator),
@@ -199,6 +201,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
     };
 }
 
+// MARK: tests
 test multiplication {
     const Multiplication = multiplication(f64);
     const two_minus_one = Expression(f64){ .binary = .{

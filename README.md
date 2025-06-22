@@ -10,6 +10,7 @@ A scalable, "simple" and fast math engine with step-by-step instructions, writte
 - [ ] Number division, exponentiation
 - [ ] Builtin functions - square root, logarithms, etc.
 - [ ] __Refactor__ change everything to utilize `.zon` files for metadata/static strings and be l18n/i10n ready, along with expanded test coverage
+- [ ] __Refactor__ add arbitrary precision
 - [x] ~~Template scoring~~
 - [x] ~~A working prototype of a web app that utilizes this engine~~
 - [ ] Implement fractions and equations, __refactor__ division to use fractions where possible
@@ -30,7 +31,7 @@ A template can also have "variants", which are more specific
 (i.e. number multiplication - when given $0.5 \times 3$, the most textbook way to do it is to multiply $3$ by the decimal part of $0.5$, and shift the result left by 1 decimal place, since there is 1 digit after the decimal).
 
 The most essential part of these rewrite rules are expressions, which are represented by `Expression(T)` - a tagged union that is generic over the type `T`, which is used as the number type.
-Currently, you can only use `f16`, `f32`, `f64` and `f128` (support for arbitrary precision ([`std.math.big.int`](https://ziglang.org/documentation/master/std/#std.math.big.int)) is coming!).
+Currently, you can only use `f16`, `f32`, `f64` and `f128` (support for arbitrary precision (~~[`std.math.big.int`](https://ziglang.org/documentation/master/std/#std.math.big.int)~~ [big integers](https://ziglang.org/documentation/master/#Integers)) is coming!).
 
 ### Engine
 
@@ -70,6 +71,103 @@ Here, the engine would get "stuck" and try to apply an action for the $1$ in the
 On the right side, it would expand $(1 + tg(x))^2$ (or replace $tg(x)$ with $\frac{sin(x)}{cos(x)}$, both options work) and eventually arrive at the same expression as the left side, which means that the equality holds.
 
 The engine can also take a different route: it can interpret this as a trigonometric equation and move everything to the left side, which after the same simplifications would result in $x \in \mathbb{R}$.
+
+### Upcoming features
+
+#### Arbitrary precision
+
+To avoid the infamous $0.1 + 0.2 = 0.3000004...$ "bug", `corundum` will receive a new type, called `Number(T)`. It can either take in a floating-point integer (so `f16`, `f32`, `f64` or `f128`) or a big integer (e.g. `i512`). This means that `Number(T)` will look like this ("arbitrary" used since it's bigger than a `f128`):
+
+```zig
+pub const Kind = enum {
+    fixed,
+    arbitrary,
+};
+
+pub fn Number(comptime T: type) type {
+    switch(@typeInfo(T)) {
+        .float, .comptime_float => {},
+        .int, .comptime_int => {},
+
+        else => @compileError("..."),
+    }
+
+    return union(Kind) {
+        const Self = @This();
+
+        fixed: T,
+        arbitrary: struct {
+            value: T,
+            decimal: isize,
+        },
+
+        // or combine them into one function with `anytype` that is either a float, or a tuple
+        pub fn init_float(value: T) Self {
+            return Self{ .fixed = value };
+        }
+
+        pub fn init_arbitrary(value: T, decimal: isize) Self {
+            return Self{ .arbitrary = .{ .value = T, .decimal = isize } };
+        }
+
+        // ...
+    };
+}
+```
+
+and the `arbitrary` kind will work (almost) the same way `BigDecimal` does in Java: the value is actually $value \times 10^{decimal}$.
+
+#### Custom templates
+
+In order to have the end user be able to create and add their own templates without recompiling, I plan on adding "custom templates", which are written in ZON, _always_ are functions and (among metadata) contain steps necessary to compute the solution, as shown below:
+
+```zon
+.{
+    .name = "Number average",
+
+    .definition = .{
+        .name = "average",
+
+        .parameters = .{ .n_ary = .number },
+
+        // or assuming we want this template to only work with 2 numbers (or other types):
+        // .parameters = .{ .array = .{ .number, .number } },
+        //
+        // or simply an expression (Expression(T)):
+        // .parameters = .{ .ast = ... },
+        //
+        // or even steal the bindings from another template:
+        // .parameters = .{ .template = .@"..." },
+    },
+
+    // These are the contents the "bindings" would have for this template, assuming we have defined `parameters` as an n-ary.
+    .inputs: .{ "array" },
+
+    // In case your `parameters` is an AST, or an array:
+    // .inputs = .{
+    //     .keys = .{ "a", "b", ... },
+    //     .paths = .{ "binary.left", ... },
+    // },
+    //
+    // And if your `parameters` calls a template, define it the same way you'd normally do, but with the same keys.
+
+
+    // These are the solution steps.
+    // Currently, they only can call "builtin" templates (so only templates the engine always contains; it should probably stay this way).
+    .solution = .{
+        // Since we know that "array" is an array of numbers and this template expects to have a binding of the same type, be can bind it here. Otherwise, we need to figure out the proper way to convert it to the expected type.
+        //
+        // Here, if you use bindings from an AST, you'd simply call .@"core/n-ary/to function" before with your bindings.
+        .{ .bind = "sum", .action = .@"core/number/n-ary/addition", .bindings = .{ .array = "array" } },
+
+        // The same logic applies here. Since this template has keyed bindings, you also need to specify the key.
+        .{ .bind = "length", .action = .@"core/n-ary/length", .bindings = .{ .keyed = .{ .function = "array" } } },
+
+        // The last step will always represent a result.
+        .{ .bind = "result", .action = .@"core/number/division", .bindings = .{ .keyed = .{ .a = "sum", .b = "length" } } },
+    },
+}
+```
 
 ## Transparency report: AI usage
 

@@ -5,6 +5,7 @@ pub const Key = enum {
 
 pub fn @"a + (-b)"(comptime T: type) Template(Key, T) {
     const Impl = struct {
+        // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             if (expression.* != .binary) return error.NotApplicable;
             if (expression.binary.operation != .addition) return error.NotApplicable;
@@ -20,6 +21,7 @@ pub fn @"a + (-b)"(comptime T: type) Template(Key, T) {
             return error.NotApplicable;
         }
 
+        // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             const a = bindings.get(.a).?;
             const b = bindings.get(.b).?.unary.operand;
@@ -40,14 +42,18 @@ pub fn @"a + (-b)"(comptime T: type) Template(Key, T) {
         }
     };
 
-    return Template(Key, T){ .dynamic = .{
-        .name = "Rewrite: a + (-b)",
-        .matches = Impl.matches,
-        .solve = Impl.solve,
-        .variants = &.{},
-    } };
+    // MARK: template
+    return Template(Key, T){
+        .dynamic = .{
+            .name = "Rewrite: a + (-b)",
+            .matches = Impl.matches,
+            .solve = Impl.solve,
+            .variants = &.{},
+        },
+    };
 }
 
+// MARK: tests
 test @"a + (-b)" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Rewrite = @"a + (-b)"(T);

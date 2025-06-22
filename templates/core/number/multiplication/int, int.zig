@@ -2,6 +2,7 @@ const Key = template.Templates.get(.@"core/number/multiplication").key;
 
 pub fn @"int, int"(comptime T: type) Variant(Key, T) {
     const Impl = struct {
+        // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             var bindings = Bindings(Key, T).init(.{});
 
@@ -18,6 +19,7 @@ pub fn @"int, int"(comptime T: type) Variant(Key, T) {
             return bindings;
         }
 
+        // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             const a = bindings.get(.a).?.number;
             const b = bindings.get(.b).?.number;
@@ -35,6 +37,7 @@ pub fn @"int, int"(comptime T: type) Variant(Key, T) {
         }
     };
 
+    // MARK: variant
     return Variant(Key, T){
         .name = "Number multiplication: integer × integer",
         .matches = Impl.matches,
@@ -43,6 +46,7 @@ pub fn @"int, int"(comptime T: type) Variant(Key, T) {
     };
 }
 
+// MARK: tests
 test "int, int(T).matches" {
     const Multiplication = @"int, int"(f64);
 

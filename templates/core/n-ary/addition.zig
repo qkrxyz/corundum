@@ -2,6 +2,7 @@ pub const Key = usize;
 
 pub fn addition(comptime T: type) Template(Key, T) {
     const Impl = struct {
+        // MARK: .matches()
         fn matches(expression: *const Expression(T), allocator: std.mem.Allocator) anyerror!Bindings(Key, T) {
             var bindings = try std.ArrayList(*const Expression(T)).initCapacity(allocator, 2);
             errdefer bindings.deinit();
@@ -59,6 +60,7 @@ pub fn addition(comptime T: type) Template(Key, T) {
             return bindings.toOwnedSlice();
         }
 
+        // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             const solution = try Solution(T).init(1, allocator);
 
@@ -77,6 +79,7 @@ pub fn addition(comptime T: type) Template(Key, T) {
         }
     };
 
+    // MARK: template
     return Template(Key, T){ .dynamic = .{
         .name = "N-ary function: addition",
         .matches = Impl.matches,
@@ -85,6 +88,7 @@ pub fn addition(comptime T: type) Template(Key, T) {
     } };
 }
 
+// MARK: tests
 test addition {
     inline for (.{ f32, f64, f128 }) |T| {
         const Addition = addition(T);
