@@ -1,6 +1,9 @@
 # corundum
 
-A scalable, "simple" and fast math engine with step-by-step instructions, written in [Zig](https://github.com/ziglang/zig).
+<!-- markdownlint-disable MD036 -->
+_Festina lente - make haste slowly_
+
+A scalable, user-friendly, "simple" and fast math engine with step-by-step instructions, written in [Zig](https://github.com/ziglang/zig).
 
 ## Roadmap
 
@@ -8,6 +11,7 @@ A scalable, "simple" and fast math engine with step-by-step instructions, writte
 - [x] ~~Template variants~~
 - [x] ~~Basic arithmetic templates (number addition, subtration, division) with high quality step-by-step solutions~~
 - [ ] Number division, exponentiation
+- [ ] __Refactor__ add very specific solution steps for every template (notably number addition, subtraction and multiplication), where possible do "dry runs" to allocate the right amount of memory (see [Andrew Kelley's talk about Data Oriented Design why](https://youtu.be/IroPQ150F6c?t=395))
 - [ ] Builtin functions - square root, logarithms, etc.
 - [ ] __Refactor__ change everything to utilize `.zon` files for metadata/static strings and be l18n/i10n ready, along with expanded test coverage
 - [ ] __Refactor__ add arbitrary precision
@@ -31,7 +35,7 @@ A template can also have "variants", which are more specific
 (i.e. number multiplication - when given $0.5 \times 3$, the most textbook way to do it is to multiply $3$ by the decimal part of $0.5$, and shift the result left by 1 decimal place, since there is 1 digit after the decimal).
 
 The most essential part of these rewrite rules are expressions, which are represented by `Expression(T)` - a tagged union that is generic over the type `T`, which is used as the number type.
-Currently, you can only use `f16`, `f32`, `f64` and `f128` (support for arbitrary precision (~~[`std.math.big.int`](https://ziglang.org/documentation/master/std/#std.math.big.int)~~ [big integers](https://ziglang.org/documentation/master/#Integers)) is coming!).
+Currently, you can only use `f16`, `f32`, `f64` and `f128` (support for arbitrary precision ([`std.math.big.int`](https://ziglang.org/documentation/master/std/#std.math.big.int)/[big integers](https://ziglang.org/documentation/master/#Integers)) is coming!).
 
 ### Engine
 
@@ -76,11 +80,12 @@ The engine can also take a different route: it can interpret this as a trigonome
 
 #### Arbitrary precision
 
-To avoid the infamous $0.1 + 0.2 = 0.3000004...$ "bug", `corundum` will receive a new type, called `Number(T)`. It can either take in a floating-point integer (so `f16`, `f32`, `f64` or `f128`) or a big integer (e.g. `i512`). This means that `Number(T)` will look like this ("arbitrary" used since it's bigger than a `f128`):
+To avoid the infamous $0.1 + 0.2 = 0.3000004...$ "bug", `corundum` will receive a new type, called `Number(T)`. It can either take in a floating-point integer (so `f16`, `f32`, `f64` or `f128`), a big integer (e.g. `i512`) or simply a `std.math.big.int.Const`. This means that `Number(T)` will look like this:
 
 ```zig
 pub const Kind = enum {
     fixed,
+    integer,
     arbitrary,
 };
 
@@ -89,15 +94,19 @@ pub fn Number(comptime T: type) type {
         .float, .comptime_float => {},
         .int, .comptime_int => {},
 
-        else => @compileError("..."),
+        else => if(T != std.math.big.int.Const) @compileError("..."),
     }
 
     return union(Kind) {
         const Self = @This();
 
         fixed: T,
+        integer: struct {
+            value: i1024, // or some other size; note to self: optimize this so that @sizeOf(Number(T)) is a power of 2
+            decimal: isize,
+        }
         arbitrary: struct {
-            value: T,
+            value: std.math.big.int.Const,
             decimal: isize,
         },
 
@@ -106,8 +115,8 @@ pub fn Number(comptime T: type) type {
             return Self{ .fixed = value };
         }
 
-        pub fn init_arbitrary(value: T, decimal: isize) Self {
-            return Self{ .arbitrary = .{ .value = T, .decimal = isize } };
+        pub fn init_arbitrary(value: std.math.big.int.Const, decimal: isize) Self {
+            return Self{ .arbitrary = .{ .value = value, .decimal = decimal } };
         }
 
         // ...
@@ -181,6 +190,12 @@ While creating this project, AI was involved in these changes/additions:
 Whilst the LLM provided the code for these ideas, I decided to implement everything myself (for example: Claude suggested I try to use enums for bindings. I agreed and decided to add them, which also meant that I needed to spend a whole day trying to integrate them, since each template has different keys and therefore it's not as straightforward to iterate over them (or even collect them into a concrete type), see [build.zig](./build.zig). The idea eventually also "infected" the actual template inventory, which now also uses a `std.EnumMap` with the keys being template names; it previously used a `std.StaticStringMap`).
 
 Everything else (i.e. core idea - templates, variants, structural matching, etc. and their final implementations/decisions) is my original thought and work.
+
+## Why "Festina lente"?
+
+"_Festina lente_" roughly translates to "_make haste slowly_".
+
+It is a reference to the raw speed of the engine ("_festina_"), achieved by (mostly) `comptime` and its ability to show its reasoning and diligence during solving in all templates ("_lente_").
 
 ## License
 

@@ -29,13 +29,13 @@ pub fn main() !void {
     }
 
     if (arguments.len >= 2) {
-        var diagnostics: std.zon.parse.Diagnostics = .{};
+        var diagnostics: std.zon.parse.Status = .{};
 
         const parsed = std.zon.parse.fromSlice(corundum.expression.Expression(f64), allocator, arguments[1], &diagnostics, .{}) catch {
             var error_iterator = diagnostics.iterateErrors();
             while (error_iterator.next()) |err| {
                 const stderr = std.io.getStdErr().writer();
-                try err.fmtMessage(&diagnostics).format("{s}", .{}, stderr);
+                try err.fmtMessage(&diagnostics).format("error: {s}\n", .{}, stderr);
             }
 
             std.process.exit(1);

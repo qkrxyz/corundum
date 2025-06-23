@@ -171,7 +171,7 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
                                 .name = "add",
                                 .arguments = @constCast(&[_]*const Expression(T){
                                     &.{ .number = @floatFromInt(x) },
-                                    &.{ .number = @floatFromInt(y) },
+                                    &.{ .number = @floatFromInt(i) },
                                 }),
                                 .body = null,
                             } },
@@ -243,7 +243,32 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
     } };
 }
 
-// TODO tests
+// MARK: tests
+test divFloor {
+    inline for (.{ f32, f64, f128 }) |T| {
+        const Division = divFloor(T);
+
+        const function = Expression(T){
+            .function = .{
+                .name = "divFloor",
+                .arguments = @constCast(&[_]*const Expression(T){
+                    &.{ .number = 42.0 },
+                    &.{ .number = 3.0 },
+                }),
+                .body = null,
+            },
+        };
+
+        const bindings = try Division.structure.matches(&function);
+
+        try testing.expectEqualDeep(Bindings(Key, T).init(.{
+            .a = &.{ .number = 42.0 },
+            .b = &.{ .number = 3.0 },
+        }), bindings);
+    }
+}
+
+// TODO solve tests
 
 const std = @import("std");
 const testing = std.testing;

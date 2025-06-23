@@ -59,7 +59,7 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
                     \\
                     \\We can rewrite $a * b$ as $b * c + b * d = bc + bd$, where $c$ is the whole part of $a$ and $d$ is the fractional part.
                 ),
-                .substeps = try allocator.alloc(*const Step(T), 0),
+                .substeps = &.{},
             }).clone(allocator));
 
             // MARK: simplify
@@ -119,7 +119,7 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
                                 .after = try (Expression(T){ .number = multiplied }).clone(allocator),
 
                                 .description = try std.fmt.allocPrint(allocator, "Multiply the fractional part of {d} (as if it was an integer) with {d}", .{ d, b }),
-                                .substeps = try allocator.alloc(*const Step(T), 0),
+                                .substeps = &.{},
                             }).clone(allocator);
 
                             // shift
@@ -139,7 +139,7 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
                                     .number = multiplied / @as(T, @floatFromInt(try std.math.powi(I, 10, shift - 1))),
                                 }).clone(allocator),
                                 .description = try std.fmt.allocPrint(allocator, "Move the decimal point left by {d} place(-s)", .{shift - 1}),
-                                .substeps = try allocator.alloc(*const Step(T), 0),
+                                .substeps = &.{},
                             }).clone(allocator);
 
                             break :float_integer float_integer_steps;

@@ -9,13 +9,9 @@ pub fn division(comptime T: type) Template(Key, T) {
     const Impl = struct {
         // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            const number = comptime template.Templates.get(.@"core/number/number").module(T);
             var bindings = Bindings(Key, T).init(.{});
 
-            _ = try number.structure.matches(expression.binary.left);
             bindings.put(.a, expression.binary.left);
-
-            _ = try number.structure.matches(expression.binary.right);
             bindings.put(.b, expression.binary.right);
 
             return bindings;
@@ -23,6 +19,8 @@ pub fn division(comptime T: type) Template(Key, T) {
 
         // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+            @setFloatMode(.optimized);
+
             const I = @Type(.{ .int = .{ .bits = @bitSizeOf(T), .signedness = .signed } });
             for (variants) |variant| {
                 const new_bindings = variant.matches(expression) catch continue;

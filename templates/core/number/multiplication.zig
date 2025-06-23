@@ -177,7 +177,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                 .before = try steps.items[1].after.?.clone(allocator),
                 .after = try (Expression(T){ .number = ce + cf + de + df }).clone(allocator),
                 .description = try std.fmt.allocPrint(allocator, "Add {d}, {d}, {d} and {d} together", .{ ce, cf, de, df }),
-                .substeps = try allocator.alloc(*const Step(T), 0),
+                .substeps = (try template.Templates.get(.@"core/number/n-ary/sum").module(T).dynamic.solve(steps.items[1].after.?, steps.items[1].after.?.function.arguments, allocator)).steps,
             }).clone(allocator));
 
             return Solution(T){ .steps = try steps.toOwnedSlice() };
@@ -428,7 +428,65 @@ test "multiplication(T).solve" {
                     } },
                     .after = &.{ .number = 6.75 },
                     .description = "Add 4, 2, 0.5 and 0.25 together",
-                    .substeps = &.{},
+                    .substeps = @constCast(&[_]*const Step(T){
+                        &.{
+                            .before = &.{ .function = .{
+                                .name = "add",
+                                .arguments = @constCast(&[_]*const Expression(T){
+                                    &.{ .number = 4 },
+                                    &.{ .number = 2 },
+                                    &.{ .number = 0.5 },
+                                    &.{ .number = 0.25 },
+                                }),
+                                .body = null,
+                            } },
+                            .after = &.{ .function = .{
+                                .name = "add",
+                                .arguments = @constCast(&[_]*const Expression(T){
+                                    &.{ .number = 6 },
+                                    &.{ .number = 0.5 },
+                                    &.{ .number = 0.25 },
+                                }),
+                                .body = null,
+                            } },
+                            .description = "Add 4 and 2 together",
+                            .substeps = &.{},
+                        },
+                        &.{
+                            .before = &.{ .function = .{
+                                .name = "add",
+                                .arguments = @constCast(&[_]*const Expression(T){
+                                    &.{ .number = 6 },
+                                    &.{ .number = 0.5 },
+                                    &.{ .number = 0.25 },
+                                }),
+                                .body = null,
+                            } },
+                            .after = &.{ .function = .{
+                                .name = "add",
+                                .arguments = @constCast(&[_]*const Expression(T){
+                                    &.{ .number = 6.5 },
+                                    &.{ .number = 0.25 },
+                                }),
+                                .body = null,
+                            } },
+                            .description = "Add 6 and 0.5 together",
+                            .substeps = &.{},
+                        },
+                        &.{
+                            .before = &.{ .function = .{
+                                .name = "add",
+                                .arguments = @constCast(&[_]*const Expression(T){
+                                    &.{ .number = 6.5 },
+                                    &.{ .number = 0.25 },
+                                }),
+                                .body = null,
+                            } },
+                            .after = &.{ .number = 6.75 },
+                            .description = "Add 6.5 and 0.25 together",
+                            .substeps = &.{},
+                        },
+                    }),
                 },
             }),
         };

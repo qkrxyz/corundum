@@ -1,6 +1,6 @@
 pub const Key = usize;
 
-pub fn addition(comptime T: type) Template(Key, T) {
+pub fn sum(comptime T: type) Template(Key, T) {
     const Impl = struct {
         // MARK: .matches()
         fn matches(expression: *const Expression(T), allocator: std.mem.Allocator) anyerror!Bindings(Key, T) {
@@ -87,7 +87,7 @@ pub fn addition(comptime T: type) Template(Key, T) {
 
     // MARK: template
     return Template(Key, T){ .dynamic = .{
-        .name = "N-ary function: number addition",
+        .name = "N-ary function: sum of numbers",
         .matches = Impl.matches,
         .solve = Impl.solve,
         .variants = &.{},
@@ -95,9 +95,9 @@ pub fn addition(comptime T: type) Template(Key, T) {
 }
 
 // MARK: tests
-test addition {
+test sum {
     inline for (.{ f32, f64, f128 }) |T| {
-        const Addition = addition(T);
+        const Addition = sum(T);
 
         const one_three_two = Expression(T){ .function = .{
             .name = "add",
@@ -122,9 +122,9 @@ test addition {
     }
 }
 
-test "addition(T).solve" {
+test "sum(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
-        const Addition = addition(T);
+        const Addition = sum(T);
 
         const one_three_two = Expression(T){ .function = .{
             .name = "add",

@@ -30,7 +30,8 @@ pub fn @"int, int"(comptime T: type) Variant(Key, T) {
                 .before = try expression.clone(allocator),
                 .after = try (Expression(T){ .number = a * b }).clone(allocator),
                 .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ a, b }),
-                .substeps = try allocator.alloc(*const Step(T), 0),
+                // TODO actually do solution steps
+                .substeps = &.{},
             }).clone(allocator);
 
             return solution;

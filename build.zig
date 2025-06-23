@@ -67,6 +67,11 @@ pub fn build(b: *std.Build) !void {
             \\
             ,
             .additional_code =
+            \\const Metadata = struct {
+            \\    name: []const u8,
+            \\    score: usize,
+            \\};
+            \\
             \\pub inline fn all() []Kind {
             \\    @setEvalBranchQuota((1 << 32) - 1);
             \\    comptime var kinds: [std.meta.fields(Kind).len]Kind = undefined;
@@ -79,11 +84,6 @@ pub fn build(b: *std.Build) !void {
             \\            length += 1;
             \\        }
             \\    }
-            \\
-            \\    const Metadata = struct {
-            \\        name: []const u8,
-            \\        score: usize,
-            \\    };
             \\
             \\    comptime var metadata: [std.meta.fields(Kind).len - length]Metadata = undefined;
             \\    comptime var metadata_length: comptime_int = 0;
@@ -259,10 +259,6 @@ pub fn build(b: *std.Build) !void {
         .install_subdir = "docs",
     });
     docs_step.dependOn(&install_docs.step);
-
-    // check
-    const check_step = b.step("check", "Check if the library compiles");
-    check_step.dependOn(&library.step);
 }
 
 fn modules(b: *std.Build, root: *std.Build.Module, tests: *std.Build.Step.Run) !void {
@@ -442,7 +438,7 @@ pub fn generate(
 
     for (metadata.items) |info| {
         if (info.basename[0] != '_') {
-            try generated.appendSlice(b.fmt("const @\"{s}\" = @import(\"{s}\");\n", .{ info.name, info.name }));
+            try generated.appendSlice(b.fmt("const @\"{s}\": Metadata = @import(\"{s}\");\n", .{ info.name, info.name }));
         }
     }
 
