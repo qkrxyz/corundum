@@ -1,7 +1,7 @@
 const std = @import("std");
 const corundum = @import("corundum");
 
-const expression = corundum.expression;
+const expression = corundum.expr;
 const template = corundum.template;
 const T = f64;
 

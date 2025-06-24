@@ -19,8 +19,6 @@ pub fn division(comptime T: type) Template(Key, T) {
 
         // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            @setFloatMode(.optimized);
-
             const I = @Type(.{ .int = .{ .bits = @bitSizeOf(T), .signedness = .signed } });
             for (variants) |variant| {
                 const new_bindings = variant.matches(expression) catch continue;
@@ -35,11 +33,12 @@ pub fn division(comptime T: type) Template(Key, T) {
             var steps = try std.ArrayList(*const Step(T)).initCapacity(allocator, 2);
 
             // MARK: integer part
+            // TODO remove this if, since it's handled in `divFloor`
             if (a >= b) {
                 const divFloor = template.Templates.get(.@"builtin/functions/divFloor");
                 const new_bindings = Bindings(divFloor.key, T).init(.{
-                    .a = &.{ .number = @floatFromInt(a) },
-                    .b = &.{ .number = @floatFromInt(b) },
+                    .a = bindings.get(.a).?,
+                    .b = bindings.get(.b).?,
                 });
 
                 const div_floor_expression = Expression(T){ .function = .{
@@ -82,6 +81,7 @@ pub fn division(comptime T: type) Template(Key, T) {
             }
 
             // MARK: decimal part
+            // TODO implement modulo operator templates
 
             return Solution(T){ .steps = try steps.toOwnedSlice() };
         }

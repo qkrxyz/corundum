@@ -2,9 +2,37 @@ pub const Key = usize;
 
 pub fn addition(comptime T: type) Template(Key, T) {
     const Impl = struct {
-        // MARK: .matches()
-        fn matches(expression: *const Expression(T), allocator: std.mem.Allocator) anyerror!Bindings(Key, T) {
-            var bindings = try std.ArrayList(*const Expression(T)).initCapacity(allocator, 2);
+        // MARK: .count()
+        fn count(expression: *const Expression(T)) anyerror!usize {
+            switch (expression.*) {
+                .binary => |binary| {
+                    // [...] - (-x) = [...] + x
+                    if (expression.binary.operation == .subtraction and expression.binary.right.* == .unary and expression.binary.right.unary.operation == .negation) {
+                        return try count(binary.left) + 1;
+                    }
+
+                    if (expression.binary.operation != .addition) return error.NotApplicable;
+
+                    return try count(binary.left) + try count(binary.right);
+                },
+
+                .number,
+                .variable,
+                .fraction,
+                .parenthesis,
+                .unary,
+                .function,
+                => return 1,
+
+                .equation => return error.BinaryEquation,
+                .boolean => return error.BooleanArithmetic,
+                .templated => unreachable,
+            }
+        }
+
+        // MARK: .impl()
+        fn impl(expression: *const Expression(T), allocator: std.mem.Allocator, capacity: usize) anyerror!Bindings(Key, T) {
+            var bindings = try std.ArrayList(*const Expression(T)).initCapacity(allocator, capacity);
             errdefer bindings.deinit();
 
             var i: usize = 0;
@@ -13,7 +41,7 @@ pub fn addition(comptime T: type) Template(Key, T) {
                 .binary => |binary| {
                     // [...] - (-x) = [...] + x
                     if (expression.binary.operation == .subtraction and expression.binary.right.* == .unary and expression.binary.right.unary.operation == .negation) {
-                        const left = try matches(binary.left, allocator);
+                        const left = try impl(binary.left, allocator, capacity - 1);
                         defer allocator.free(left);
 
                         for (0..left.len) |j| {
@@ -27,10 +55,10 @@ pub fn addition(comptime T: type) Template(Key, T) {
 
                     if (expression.binary.operation != .addition) return error.NotApplicable;
 
-                    const left = try matches(binary.left, allocator);
+                    const left = try impl(binary.left, allocator, 1);
                     defer allocator.free(left);
 
-                    const right = try matches(binary.right, allocator);
+                    const right = try impl(binary.right, allocator, 1);
                     defer allocator.free(right);
 
                     for (0..left.len) |j| {
@@ -52,12 +80,20 @@ pub fn addition(comptime T: type) Template(Key, T) {
                 .function,
                 => try bindings.append(expression),
 
-                .equation => return error.BinaryEquation,
-                .boolean => return error.BooleanArithmetic,
-                .templated => unreachable,
+                .equation, .boolean, .templated => unreachable,
             }
 
             return bindings.toOwnedSlice();
+        }
+
+        // MARK: .matches()
+        fn matches(expression: *const Expression(T), allocator: std.mem.Allocator) anyerror!Bindings(Key, T) {
+            if (expression.* != .binary) return error.NotApplicable;
+
+            const capacity = try count(expression);
+            if (capacity < 2) return error.NotEnoughParameters;
+
+            return impl(expression, allocator, capacity);
         }
 
         // MARK: .solve()
@@ -228,6 +264,17 @@ test "addition(T).matches(..., unary)" {
         });
 
         try testing.expectEqualDeep(expected, bindings);
+    }
+}
+
+test "addition(T).matches(...) - not enough parameters/wrong structure" {
+    inline for (.{ f32, f64, f128 }) |T| {
+        const Addition = addition(T);
+
+        const one = Expression(T){ .number = 3.14 };
+
+        const bindings = Addition.dynamic.matches(&one, testing.allocator);
+        try testing.expectError(error.NotApplicable, bindings);
     }
 }
 

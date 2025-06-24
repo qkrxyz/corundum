@@ -18,11 +18,12 @@ pub fn sum(comptime T: type) Template(Key, T) {
         }
 
         // MARK: .solve()
+        // TODO call @"core/number/addition" so that the identities are handled correctly
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             var steps = std.ArrayList(*const Step(T)).init(allocator);
 
             const initial_args = blk: {
-                var arguments = std.ArrayList(*const Expression(T)).init(allocator);
+                var arguments = try std.ArrayList(*const Expression(T)).initCapacity(allocator, 2);
 
                 try arguments.append(&Expression(T){ .number = bindings[0].number + bindings[1].number });
                 try arguments.appendSlice(if (bindings.len >= 3) bindings[2..] else &.{});

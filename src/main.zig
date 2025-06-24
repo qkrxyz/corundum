@@ -31,7 +31,7 @@ pub fn main() !void {
     if (arguments.len >= 2) {
         var diagnostics: std.zon.parse.Status = .{};
 
-        const parsed = std.zon.parse.fromSlice(corundum.expression.Expression(f64), allocator, arguments[1], &diagnostics, .{}) catch {
+        const parsed = std.zon.parse.fromSlice(corundum.expr.Expression(f64), allocator, arguments[1], &diagnostics, .{}) catch {
             var error_iterator = diagnostics.iterateErrors();
             while (error_iterator.next()) |err| {
                 const stderr = std.io.getStdErr().writer();
@@ -55,11 +55,12 @@ fn run(function: anytype, arguments: anytype) !void {
 
     var results: [ITERATIONS]u64 = undefined;
     for (0..ITERATIONS) |i| {
-        var timer = try std.time.Timer.start();
+        const start = std.time.nanoTimestamp();
 
         try @call(.always_inline, function, arguments);
 
-        results[i] = timer.read();
+        const end = std.time.nanoTimestamp();
+        results[i] = @intCast(end - start);
         progress.completeOne();
     }
 
@@ -105,7 +106,7 @@ fn printTime(nanoseconds: f64) void {
     }
 }
 
-fn benchmark2(allocator: std.mem.Allocator, expression: *const corundum.expression.Expression(f64)) !void {
+fn benchmark2(allocator: std.mem.Allocator, expression: *const corundum.expr.Expression(f64)) !void {
     const structural = expression.structural();
     const hash = expression.hash();
 

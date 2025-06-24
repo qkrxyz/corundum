@@ -18,9 +18,8 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
         }
 
         // MARK: .solve()
+        // TODO separate into variants
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            @setFloatMode(.optimized);
-
             for (variants) |variant| {
                 const new_bindings = variant.matches(expression) catch continue;
 

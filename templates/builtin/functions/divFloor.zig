@@ -46,17 +46,53 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
         // - 7360, 7383, 7406, 7383       | 320, 321, 322, 321
         // Since we can't increment the multiplier by a value lower than 1, we have our result.
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            _ = expression;
             const I = @Type(.{ .int = .{ .bits = @bitSizeOf(T), .signedness = .signed } });
 
-            const a: I = @intFromFloat(bindings.get(.a).?.number);
-            const b: I = @intFromFloat(bindings.get(.b).?.number);
+            const negate = (bindings.get(.a).?.number < 0.0) != (bindings.get(.b).?.number < 0.0);
 
-            var steps = std.ArrayList(*const Step(T)).init(allocator);
+            const a: I = @intFromFloat(@abs(bindings.get(.a).?.number));
+            const b: I = @intFromFloat(@abs(bindings.get(.b).?.number));
 
-            var magnitude_steps = try std.ArrayList(*const Step(T)).initCapacity(allocator, @as(usize, @intFromFloat(@ceil(@log10(bindings.get(.a).?.number)))) + 1);
+            // TODO extract these into their own variants, along with the "one of the inputs is negative" case.
+            if (a < b) {
+                const solution = try Solution(T).init(1, allocator);
+                solution.steps[0] = try (Step(T){
+                    .before = try expression.clone(allocator),
+                    .after = try (Expression(T){ .number = 0.0 }).clone(allocator),
+                    .description = try std.fmt.allocPrint(allocator, "Since {d} is smaller than {d}, the result is 0.", .{ a, b }),
+                    .substeps = &.{},
+                }).clone(allocator);
+
+                return solution;
+            }
+
+            if (a == b) {
+                const solution = try Solution(T).init(1, allocator);
+                solution.steps[0] = try (Step(T){
+                    .before = try expression.clone(allocator),
+                    .after = try (Expression(T){ .number = 1.0 }).clone(allocator),
+                    .description = try std.fmt.allocPrint(allocator, "Since {d} is the same as {d}, the result is 1.", .{ a, b }),
+                    .substeps = &.{},
+                }).clone(allocator);
+
+                return solution;
+            }
+
+            var steps = try std.ArrayList(*const Step(T)).initCapacity(
+                allocator,
+                blk: {
+                    var length: usize = 1 + @as(usize, @intFromBool(negate));
+                    while (try std.math.powi(usize, 10, length) <= a) : (length += 1) {}
+                    break :blk length;
+                },
+            );
 
             // MARK: magnitude
+            var magnitude_steps = try std.ArrayList(*const Step(T)).initCapacity(
+                allocator,
+                steps.capacity,
+            );
+
             var x: I = 1;
             while (b * x <= a) : (x *= 10) {
                 try magnitude_steps.append(try (Step(T){
@@ -66,13 +102,17 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
                         .operation = .multiplication,
                     } }).clone(allocator),
                     .after = try (Expression(T){ .number = @floatFromInt(b * x) }).clone(allocator),
-                    .description = try std.fmt.allocPrint(allocator, "Since {d} is less than {d}, we add 1 decimal place to our multiplier", .{ b * x, a }),
+                    .description = try std.fmt.allocPrint(allocator, "Since {d} is less than or equal to {d}, we add 1 decimal place to our multiplier", .{ b * x, a }),
                     .substeps = &.{},
                 }).clone(allocator));
             }
 
             try magnitude_steps.append(try (Step(T){
-                .before = try (Expression(T){ .number = @floatFromInt(b * x) }).clone(allocator),
+                .before = try (Expression(T){ .binary = .{
+                    .left = bindings.get(.b).?,
+                    .right = &.{ .number = @floatFromInt(x) },
+                    .operation = .multiplication,
+                } }).clone(allocator),
                 .after = try (Expression(T){ .number = @as(T, @floatFromInt(b * x)) / 10.0 }).clone(allocator),
                 .description = try std.fmt.allocPrint(allocator, "Since {d} is more than {d}, divide the multiplier by 10", .{ b * x, a }),
                 .substeps = &.{},
@@ -88,9 +128,12 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
                 .substeps = try magnitude_steps.toOwnedSlice(),
             }).clone(allocator));
 
-            var refine_steps = try std.ArrayList(*const Step(T)).initCapacity(allocator, @as(usize, @intFromFloat(@ceil(@log10(bindings.get(.a).?.number)))) + 1);
-
             // MARK: refinement
+            var refine_steps = try std.ArrayList(*const Step(T)).initCapacity(
+                allocator,
+                steps.capacity,
+            );
+
             var i: I = 1;
             while (y != 1) {
                 const before = x;
@@ -118,7 +161,7 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
                             },
                         }).clone(allocator),
                         .after = try (Expression(T){ .number = @floatFromInt(b * (x + y * i)) }).clone(allocator),
-                        .description = try std.fmt.allocPrint(allocator, "Since {d} is less than {d}, we add one more magnitude to our multiplier", .{ b * (x + y * i), a }),
+                        .description = try std.fmt.allocPrint(allocator, "Since {d} is less than or equal to {d}, we add one more magnitude to our multiplier", .{ b * (x + y * i), a }),
                         .substeps = &.{},
                     }).clone(allocator));
                 }
@@ -159,11 +202,22 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
                 }).clone(allocator));
             }
 
-            try steps.appendSlice(try refine_steps.toOwnedSlice());
+            const refine_slice = try refine_steps.toOwnedSlice();
+            try steps.appendSlice(refine_slice);
+            allocator.free(refine_slice);
 
             // MARK: digits
+            var digit_steps = try std.ArrayList(*const Step(T)).initCapacity(
+                allocator,
+                blk: {
+                    var result: I = 1;
+                    while (b * (x + result) <= a) : (result += 1) {}
+                    break :blk @intCast(result);
+                },
+            );
+
             while (b * (x + i) <= a) : (i += 1) {
-                try refine_steps.append(try (Step(T){
+                try digit_steps.append(try (Step(T){
                     .before = try (Expression(T){
                         .binary = .{
                             .left = bindings.get(.b).?,
@@ -179,12 +233,12 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
                         },
                     }).clone(allocator),
                     .after = try (Expression(T){ .number = @floatFromInt(b * (x + i)) }).clone(allocator),
-                    .description = try std.fmt.allocPrint(allocator, "Since {d} is less than {d}, we add one more magnitude to our multiplier", .{ b * (x + i), a }),
+                    .description = try std.fmt.allocPrint(allocator, "Since {d} is less than or equal to {d}, we add one more magnitude to our multiplier", .{ b * (x + i), a }),
                     .substeps = &.{},
                 }).clone(allocator));
             }
 
-            try refine_steps.append(try (Step(T){
+            try digit_steps.append(try (Step(T){
                 .before = try (Expression(T){
                     .binary = .{
                         .left = bindings.get(.b).?,
@@ -217,8 +271,22 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
                 .before = try steps.getLast().after.?.clone(allocator),
                 .after = try (Expression(T){ .number = @floatFromInt(x) }).clone(allocator),
                 .description = try allocator.dupe(u8, "Refine the search"),
-                .substeps = try refine_steps.toOwnedSlice(),
+                .substeps = try digit_steps.toOwnedSlice(),
             }).clone(allocator));
+
+            // MARK: negation
+            if (negate) {
+                const last = steps.getLast().after.?;
+
+                const remainder = (x + 1) * b - a;
+
+                try steps.append(try (Step(T){
+                    .before = try last.clone(allocator),
+                    .after = try (Expression(T){ .number = -last.number - 1 }).clone(allocator),
+                    .description = try std.fmt.allocPrint(allocator, "Since our original input contained negative numbers, we also have to change the sign of our result and also subtract one.\n\nThis is because $-{d} \\times {d} + {d}$ (the remainder) $= -{d} + {d} = -{d}$", .{ x + 1, b, remainder, (x + 1) * b, remainder, a }),
+                    .substeps = &.{},
+                }).clone(allocator));
+            }
 
             return Solution(T){ .steps = try steps.toOwnedSlice() };
         }
@@ -268,7 +336,268 @@ test divFloor {
     }
 }
 
-// TODO solve tests
+test "divFloor(T).solve" {
+    inline for (.{ f32, f64, f128 }) |T| {
+        const Division = divFloor(T);
+
+        const function = Expression(T){ .function = .{
+            .name = "divFloor",
+            .arguments = @constCast(&[_]*const Expression(T){
+                &.{ .number = 7393 },
+                &.{ .number = 23 },
+            }),
+            .body = null,
+        } };
+
+        const bindings = try Division.structure.matches(&function);
+        const solution = try Division.structure.solve(&function, bindings, testing.allocator);
+        defer solution.deinit(testing.allocator);
+
+        const expected = Solution(T){
+            .steps = @constCast(&[_]*const Step(T){
+                &.{
+                    .before = &.{ .number = 1.0 },
+                    .after = &.{ .number = 100.0 },
+                    .description = "Figure out the magnitude of the result",
+                    .substeps = @constCast(&[_]*const Step(T){
+                        &.{
+                            .before = &.{ .binary = .{
+                                .left = &.{ .number = 23.0 },
+                                .right = &.{ .number = 1.0 },
+                                .operation = .multiplication,
+                            } },
+                            .after = &.{ .number = 23.0 },
+                            .description = "Since 23 is less than or equal to 7393, we add 1 decimal place to our multiplier",
+                            .substeps = &.{},
+                        },
+                        &.{
+                            .before = &.{ .binary = .{
+                                .left = &.{ .number = 23.0 },
+                                .right = &.{ .number = 10.0 },
+                                .operation = .multiplication,
+                            } },
+                            .after = &.{ .number = 230.0 },
+                            .description = "Since 230 is less than or equal to 7393, we add 1 decimal place to our multiplier",
+                            .substeps = &.{},
+                        },
+                        &.{
+                            .before = &.{ .binary = .{
+                                .left = &.{ .number = 23.0 },
+                                .right = &.{ .number = 100.0 },
+                                .operation = .multiplication,
+                            } },
+                            .after = &.{ .number = 2300.0 },
+                            .description = "Since 2300 is less than or equal to 7393, we add 1 decimal place to our multiplier",
+                            .substeps = &.{},
+                        },
+                        &.{
+                            .before = &.{ .binary = .{
+                                .left = &.{ .number = 23.0 },
+                                .right = &.{ .number = 1000.0 },
+                                .operation = .multiplication,
+                            } },
+                            .after = &.{ .number = 2300.0 },
+                            .description = "Since 23000 is more than 7393, divide the multiplier by 10",
+                            .substeps = &.{},
+                        },
+                    }),
+                },
+                &.{
+                    .before = &.{ .number = 100.0 },
+                    .after = &.{ .number = 300.0 },
+                    .description = "Refine the search",
+                    .substeps = @constCast(&[_]*const Step(T){
+                        &.{
+                            .before = &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 23.0 },
+                                .right = &.{ .function = .{
+                                    .name = "add",
+                                    .arguments = @constCast(&[_]*const Expression(T){
+                                        &.{ .number = 100.0 }, &.{
+                                            .binary = .{
+                                                .operation = .multiplication,
+                                                .left = &.{ .number = 100.0 },
+                                                .right = &.{ .number = 2.0 },
+                                            },
+                                        },
+                                    }),
+                                    .body = null,
+                                } },
+                            } },
+                            .after = &.{ .number = 4600.0 },
+                            .description = "Since 4600 is less than or equal to 7393, we add one more magnitude to our multiplier",
+                            .substeps = &.{},
+                        },
+                        &.{
+                            .before = &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 23.0 },
+                                .right = &.{ .function = .{
+                                    .name = "add",
+                                    .arguments = @constCast(&[_]*const Expression(T){
+                                        &.{ .number = 100.0 }, &.{
+                                            .binary = .{
+                                                .operation = .multiplication,
+                                                .left = &.{ .number = 100.0 },
+                                                .right = &.{ .number = 3.0 },
+                                            },
+                                        },
+                                    }),
+                                    .body = null,
+                                } },
+                            } },
+                            .after = &.{ .number = 6900.0 },
+                            .description = "Since 6900 is less than or equal to 7393, we add one more magnitude to our multiplier",
+                            .substeps = &.{},
+                        },
+                        &.{
+                            .before = &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 23.0 },
+                                .right = &.{ .function = .{
+                                    .name = "add",
+                                    .arguments = @constCast(&[_]*const Expression(T){
+                                        &.{ .number = 100.0 }, &.{
+                                            .binary = .{
+                                                .operation = .multiplication,
+                                                .left = &.{ .number = 100.0 },
+                                                .right = &.{ .number = 4.0 },
+                                            },
+                                        },
+                                    }),
+                                    .body = null,
+                                } },
+                            } },
+                            .after = &.{ .number = 9200.0 },
+                            .description = "Since 9200 is more than 7393, we go back to the previous multiplier and change the magnitude to 10",
+                            .substeps = &.{},
+                        },
+                    }),
+                },
+                &.{
+                    .before = &.{ .number = 300.0 },
+                    .after = &.{ .number = 320.0 },
+                    .description = "Refine the search",
+                    .substeps = @constCast(&[_]*const Step(T){
+                        &.{
+                            .before = &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 23.0 },
+                                .right = &.{ .function = .{
+                                    .name = "add",
+                                    .arguments = @constCast(&[_]*const Expression(T){
+                                        &.{ .number = 300.0 }, &.{ .binary = .{
+                                            .operation = .multiplication,
+                                            .left = &.{ .number = 10.0 },
+                                            .right = &.{ .number = 2.0 },
+                                        } },
+                                    }),
+                                    .body = null,
+                                } },
+                            } },
+                            .after = &.{ .number = 7130.0 },
+                            .description = "Since 7130 is less than or equal to 7393, we add one more magnitude to our multiplier",
+                            .substeps = &.{},
+                        },
+                        &.{
+                            .before = &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 23.0 },
+                                .right = &.{ .function = .{
+                                    .name = "add",
+                                    .arguments = @constCast(&[_]*const Expression(T){
+                                        &.{ .number = 300.0 }, &.{ .binary = .{
+                                            .operation = .multiplication,
+                                            .left = &.{ .number = 10.0 },
+                                            .right = &.{ .number = 3.0 },
+                                        } },
+                                    }),
+                                    .body = null,
+                                } },
+                            } },
+                            .after = &.{ .number = 7360.0 },
+                            .description = "Since 7360 is less than or equal to 7393, we add one more magnitude to our multiplier",
+                            .substeps = &.{},
+                        },
+                        &.{
+                            .before = &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 23.0 },
+                                .right = &.{ .function = .{
+                                    .name = "add",
+                                    .arguments = @constCast(&[_]*const Expression(T){
+                                        &.{ .number = 300.0 }, &.{ .binary = .{
+                                            .operation = .multiplication,
+                                            .left = &.{ .number = 10.0 },
+                                            .right = &.{ .number = 4.0 },
+                                        } },
+                                    }),
+                                    .body = null,
+                                } },
+                            } },
+                            .after = &.{ .number = 7590.0 },
+                            .description = "Since 7590 is more than 7393, we go back to the previous multiplier and change the magnitude to 1",
+                            .substeps = &.{},
+                        },
+                    }),
+                },
+                &.{
+                    .before = &.{ .number = 320.0 },
+                    .after = &.{ .number = 321.0 },
+                    .description = "Refine the search",
+                    .substeps = @constCast(&[_]*const Step(T){
+                        &.{
+                            .before = &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 23.0 },
+                                .right = &.{ .function = .{
+                                    .name = "add",
+                                    .arguments = @constCast(&[_]*const Expression(T){
+                                        &.{ .number = 320.0 },
+                                        &.{ .number = 1.0 },
+                                    }),
+                                    .body = null,
+                                } },
+                            } },
+                            .after = &.{ .number = 7383.0 },
+                            .description = "Since 7383 is less than or equal to 7393, we add one more magnitude to our multiplier",
+                            .substeps = &.{},
+                        },
+                        &.{
+                            .before = &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 23.0 },
+                                .right = &.{ .function = .{
+                                    .name = "add",
+                                    .arguments = @constCast(&[_]*const Expression(T){
+                                        &.{ .number = 320.0 }, &.{ .binary = .{
+                                            .operation = .multiplication,
+                                            .left = &.{ .number = 1.0 },
+                                            .right = &.{ .binary = .{
+                                                .operation = .subtraction,
+                                                .left = &.{ .number = 2.0 },
+                                                .right = &.{ .number = 1.0 },
+                                            } },
+                                        } },
+                                    }),
+                                    .body = null,
+                                } },
+                            } },
+                            .after = &.{ .number = 7383.0 },
+                            .description = "Since 7406 is more than 7393, we go back to the previous multiplier and since the magnitude is equal to 1, we found the answer.",
+                            .substeps = &.{},
+                        },
+                    }),
+                },
+            }),
+        };
+
+        try testing.expectEqualDeep(expected, solution);
+    }
+}
+
+// TODO tests for a < b, a == b and negative inputs
 
 const std = @import("std");
 const testing = std.testing;
