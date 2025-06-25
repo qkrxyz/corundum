@@ -1,3 +1,22 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{
+        .{
+            "1 + 2", &Expression(T){ .binary = .{
+                .operation = .addition,
+                .left = &.{ .number = 1.0 },
+                .right = &.{ .number = 2.0 },
+            } },
+        },
+        .{
+            "3 + (-2)", &Expression(T){ .binary = .{
+                .operation = .addition,
+                .left = &.{ .number = 3.0 },
+                .right = &.{ .number = -2.0 },
+            } },
+        },
+    });
+}
+
 pub const Key = enum {
     a,
     b,
@@ -108,22 +127,14 @@ test addition {
 test "addition(T).matches" {
     const Addition = addition(f64);
 
-    const one_plus_two = Expression(f64){ .binary = .{
-        .operation = .addition,
-        .left = &.{ .number = 1.0 },
-        .right = &.{ .number = 2.0 },
-    } };
-    const three_plus_minus_two = Expression(f64){ .binary = .{
-        .operation = .addition,
-        .left = &.{ .number = 3.0 },
-        .right = &.{ .number = -2.0 },
-    } };
+    const one_plus_two = TestingData(f64).get("1 + 2").?;
+    const three_plus_minus_two = TestingData(f64).get("3 + (-2)").?;
 
-    var bindings = try Addition.structure.matches(&one_plus_two);
+    var bindings = try Addition.structure.matches(one_plus_two);
     try testing.expectEqualDeep(bindings.get(.a), one_plus_two.binary.left);
     try testing.expectEqualDeep(bindings.get(.b), one_plus_two.binary.right);
 
-    bindings = try Addition.structure.matches(&three_plus_minus_two);
+    bindings = try Addition.structure.matches(three_plus_minus_two);
     try testing.expectEqualDeep(bindings.get(.a), three_plus_minus_two.binary.left);
     try testing.expectEqualDeep(bindings.get(.b), three_plus_minus_two.binary.right);
 }
@@ -131,20 +142,16 @@ test "addition(T).matches" {
 test "addition(T).solve" {
     const Addition = addition(f64);
 
-    const one_plus_two = Expression(f64){ .binary = .{
-        .operation = .addition,
-        .left = &.{ .number = 1.0 },
-        .right = &.{ .number = 2.0 },
-    } };
+    const one_plus_two = TestingData(f64).get("1 + 2").?;
 
-    const bindings = try Addition.structure.matches(&one_plus_two);
-    const solution = try Addition.structure.solve(&one_plus_two, bindings, testing.allocator);
+    const bindings = try Addition.structure.matches(one_plus_two);
+    const solution = try Addition.structure.solve(one_plus_two, bindings, testing.allocator);
     defer solution.deinit(testing.allocator);
 
     const expected = Solution(f64){
         .steps = @constCast(&[_]*const Step(f64){
             &.{
-                .before = &one_plus_two,
+                .before = one_plus_two,
                 .after = &.{ .number = 3.0 },
                 .description = "Add 1 and 2 together",
                 .substeps = &.{},
@@ -158,34 +165,30 @@ test "addition(T).solve" {
 test "addition(T).solve - `±a + (-b)`" {
     const Addition = addition(f64);
 
-    const one_plus_two = Expression(f64){ .binary = .{
-        .operation = .addition,
-        .left = &.{ .number = 1.0 },
-        .right = &.{ .number = -2.0 },
-    } };
+    const three_plus_minus_two = TestingData(f64).get("3 + (-2)").?;
 
-    const one_minus_two = Expression(f64){ .binary = .{
+    const three_minus_two = Expression(f64){ .binary = .{
         .operation = .subtraction,
-        .left = &.{ .number = 1.0 },
+        .left = &.{ .number = 3.0 },
         .right = &.{ .number = 2.0 },
     } };
 
-    const bindings = try Addition.structure.matches(&one_plus_two);
-    const solution = try Addition.structure.solve(&one_plus_two, bindings, testing.allocator);
+    const bindings = try Addition.structure.matches(three_plus_minus_two);
+    const solution = try Addition.structure.solve(three_plus_minus_two, bindings, testing.allocator);
     defer solution.deinit(testing.allocator);
 
     const expected = Solution(f64){
         .steps = @constCast(&[_]*const Step(f64){
             &.{
-                .before = &one_plus_two,
-                .after = &one_minus_two,
+                .before = three_plus_minus_two,
+                .after = &three_minus_two,
                 .description = "Change the sign",
                 .substeps = &.{},
             },
             &.{
-                .before = &one_minus_two,
-                .after = &.{ .number = -1.0 },
-                .description = "Subtract 2 from 1",
+                .before = &three_minus_two,
+                .after = &.{ .number = 1.0 },
+                .description = "Subtract 2 from 3",
                 .substeps = &.{},
             },
         }),

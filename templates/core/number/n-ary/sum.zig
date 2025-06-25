@@ -1,3 +1,19 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{
+        .{
+            "1 + 3 + 2", &Expression(T){ .function = .{
+                .name = "add",
+                .arguments = @constCast(&[_]*const Expression(T){
+                    &.{ .number = 1.0 },
+                    &.{ .number = 3.0 },
+                    &.{ .number = 2.0 },
+                }),
+                .body = null,
+            } },
+        },
+    });
+}
+
 pub const Key = usize;
 
 pub fn sum(comptime T: type) Template(Key, T) {
@@ -20,7 +36,7 @@ pub fn sum(comptime T: type) Template(Key, T) {
         // MARK: .solve()
         // TODO call @"core/number/addition" so that the identities are handled correctly
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            var steps = std.ArrayList(*const Step(T)).init(allocator);
+            var steps = try std.ArrayList(*const Step(T)).initCapacity(allocator, bindings.len - 1);
 
             const initial_args = blk: {
                 var arguments = try std.ArrayList(*const Expression(T)).initCapacity(allocator, 2);
@@ -100,17 +116,9 @@ test sum {
     inline for (.{ f32, f64, f128 }) |T| {
         const Addition = sum(T);
 
-        const one_three_two = Expression(T){ .function = .{
-            .name = "add",
-            .arguments = @constCast(&[_]*const Expression(T){
-                &.{ .number = 1.0 },
-                &.{ .number = 3.0 },
-                &.{ .number = 2.0 },
-            }),
-            .body = null,
-        } };
+        const one_three_two = TestingData(T).kvs.values[0];
 
-        const bindings = try Addition.dynamic.matches(&one_three_two, testing.allocator);
+        const bindings = try Addition.dynamic.matches(one_three_two, testing.allocator);
         defer testing.allocator.free(bindings);
 
         const expected: []*const Expression(T) = @constCast(&[_]*const Expression(T){
@@ -127,20 +135,12 @@ test "sum(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Addition = sum(T);
 
-        const one_three_two = Expression(T){ .function = .{
-            .name = "add",
-            .arguments = @constCast(&[_]*const Expression(T){
-                &.{ .number = 1.0 },
-                &.{ .number = 3.0 },
-                &.{ .number = 2.0 },
-            }),
-            .body = null,
-        } };
+        const one_three_two = TestingData(T).get("1 + 3 + 2").?;
 
-        const bindings = try Addition.dynamic.matches(&one_three_two, testing.allocator);
+        const bindings = try Addition.dynamic.matches(one_three_two, testing.allocator);
         defer testing.allocator.free(bindings);
 
-        const solution = try Addition.dynamic.solve(&one_three_two, bindings, testing.allocator);
+        const solution = try Addition.dynamic.solve(one_three_two, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){ .steps = @constCast(&[_]*const Step(T){

@@ -29,7 +29,7 @@ pub fn main() !void {
     }
 
     if (arguments.len >= 2) {
-        var diagnostics: std.zon.parse.Status = .{};
+        var diagnostics: std.zon.parse.Diagnostics = .{};
 
         const parsed = std.zon.parse.fromSlice(corundum.expr.Expression(f64), allocator, arguments[1], &diagnostics, .{}) catch {
             var error_iterator = diagnostics.iterateErrors();

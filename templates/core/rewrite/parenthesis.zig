@@ -1,3 +1,9 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{
+        .{ "(1)", &Expression(T){ .parenthesis = &.{ .number = 1.0 } } },
+    });
+}
+
 pub const Key = enum {
     inner,
 };
@@ -47,13 +53,12 @@ test parenthesis {
     inline for (.{ f32, f64, f128 }) |T| {
         const Parens = parenthesis(T);
 
-        const one = Expression(T){ .number = 1.0 };
-        const paren_one = Expression(T){ .parenthesis = &one };
+        const paren_one = TestingData(T).kvs.values[0];
 
-        try testing.expectError(error.NotApplicable, Parens.dynamic.matches(&one));
+        try testing.expectError(error.NotApplicable, Parens.dynamic.matches(paren_one.parenthesis));
 
-        const bindings = try Parens.dynamic.matches(&paren_one);
-        try testing.expectEqualDeep(bindings.get(.inner).?, &one);
+        const bindings = try Parens.dynamic.matches(paren_one);
+        try testing.expectEqualDeep(bindings.get(.inner).?, &Expression(T){ .number = 1.0 });
     }
 }
 

@@ -1,3 +1,15 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{
+        .{
+            "4.5 * 1.5", &Expression(T){ .binary = .{
+                .operation = .multiplication,
+                .left = &.{ .number = 4.5 },
+                .right = &.{ .number = 1.5 },
+            } },
+        },
+    });
+}
+
 pub const Key = enum {
     a,
     b,
@@ -238,14 +250,10 @@ test "multiplication(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Multiplication = multiplication(T);
 
-        const expression = Expression(T){ .binary = .{
-            .operation = .multiplication,
-            .left = &.{ .number = 4.5 },
-            .right = &.{ .number = 1.5 },
-        } };
+        const expression = TestingData(T).get("4.5 * 1.5").?;
 
-        const bindings = try Multiplication.structure.matches(&expression);
-        const solution = try Multiplication.structure.solve(&expression, bindings, testing.allocator);
+        const bindings = try Multiplication.structure.matches(expression);
+        const solution = try Multiplication.structure.solve(expression, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){

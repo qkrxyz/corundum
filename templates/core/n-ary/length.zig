@@ -1,3 +1,7 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{});
+}
+
 pub const Key = enum {
     function,
 };

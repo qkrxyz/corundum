@@ -1,3 +1,15 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{
+        .{
+            "1 * 0", &Expression(T){ .binary = .{
+                .left = &.{ .number = 1.0 },
+                .operation = .multiplication,
+                .right = &.{ .number = 0.0 },
+            } },
+        },
+    });
+}
+
 const Key = template.Templates.get(.@"core/number/multiplication").key;
 
 pub fn @"a × 0"(comptime T: type) Variant(Key, T) {
@@ -43,11 +55,7 @@ test @"a × 0" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Multiplication = @"a × 0"(T);
 
-        const one_times_zero = Expression(T){ .binary = .{
-            .left = &.{ .number = 1.0 },
-            .operation = .multiplication,
-            .right = &.{ .number = 0.0 },
-        } };
+        const one_times_zero = TestingData(T).get("1 * 0").?;
 
         const zero_times_one = Expression(T){ .binary = .{
             .left = &.{ .number = 0.0 },
@@ -61,7 +69,7 @@ test @"a × 0" {
             .right = &.{ .number = 2.0 },
         } };
 
-        var bindings = try Multiplication.matches(&one_times_zero);
+        var bindings = try Multiplication.matches(one_times_zero);
         try testing.expectEqual(null, bindings.get(.a));
         try testing.expectEqual(null, bindings.get(.b));
 
@@ -77,20 +85,16 @@ test "a × 0(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Multiplication = @"a × 0"(T);
 
-        const one_times_zero = Expression(T){ .binary = .{
-            .left = &.{ .number = 1.0 },
-            .operation = .multiplication,
-            .right = &.{ .number = 0.0 },
-        } };
+        const one_times_zero = TestingData(T).get("1 * 0").?;
 
-        const bindings = try Multiplication.matches(&one_times_zero);
-        const solution = try Multiplication.solve(&one_times_zero, bindings, testing.allocator);
+        const bindings = try Multiplication.matches(one_times_zero);
+        const solution = try Multiplication.solve(one_times_zero, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
             .steps = @constCast(&[_]*const Step(T){
                 &.{
-                    .before = &one_times_zero,
+                    .before = one_times_zero,
                     .after = &.{ .number = 0.0 },
                     .description = "Anything multiplied by 0 is equal to 0",
                     .substeps = &.{},

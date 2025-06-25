@@ -1,3 +1,15 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{
+        .{
+            "1 - 0", &Expression(T){ .binary = .{
+                .left = &.{ .number = 1.0 },
+                .operation = .subtraction,
+                .right = &.{ .number = 0.0 },
+            } },
+        },
+    });
+}
+
 const Key = template.Templates.get(.@"core/number/subtraction").key;
 
 pub fn @"a - 0"(comptime T: type) Variant(Key, T) {
@@ -71,20 +83,16 @@ test "a - 0(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Subtraction = @"a - 0"(T);
 
-        const one_minus_zero = Expression(T){ .binary = .{
-            .left = &.{ .number = 1.0 },
-            .operation = .subtraction,
-            .right = &.{ .number = 0.0 },
-        } };
+        const one_minus_zero = TestingData(T).get("1 - 0").?;
 
-        const bindings = try Subtraction.matches(&one_minus_zero);
-        const solution = try Subtraction.solve(&one_minus_zero, bindings, testing.allocator);
+        const bindings = try Subtraction.matches(one_minus_zero);
+        const solution = try Subtraction.solve(one_minus_zero, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
             .steps = @constCast(&[_]*const Step(T){
                 &.{
-                    .before = &one_minus_zero,
+                    .before = one_minus_zero,
                     .after = &.{ .number = 1.0 },
                     .description = "Subtracting 0 does nothing",
                     .substeps = &.{},

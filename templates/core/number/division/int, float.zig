@@ -1,3 +1,7 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{});
+}
+
 const Key = template.Templates.get(.@"core/number/division").key;
 
 pub fn @"int, float"(comptime T: type) Variant(Key, T) {

@@ -1,3 +1,15 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{
+        .{
+            "1 * 2", &Expression(T){ .binary = .{
+                .left = &.{ .number = 1.0 },
+                .operation = .multiplication,
+                .right = &.{ .number = 2.0 },
+            } },
+        },
+    });
+}
+
 const Key = template.Templates.get(.@"core/number/multiplication").key;
 
 pub fn @"a × 1"(comptime T: type) Variant(Key, T) {
@@ -54,11 +66,7 @@ test @"a × 1" {
             .right = &.{ .number = 1.0 },
         } };
 
-        const one_times_two = Expression(T){ .binary = .{
-            .left = &.{ .number = 1.0 },
-            .operation = .multiplication,
-            .right = &.{ .number = 2.0 },
-        } };
+        const one_times_two = TestingData(T).get("1 * 2").?;
 
         const two_times_three = Expression(T){ .binary = .{
             .left = &.{ .number = 2.0 },
@@ -70,7 +78,7 @@ test @"a × 1" {
         try testing.expectEqual(two_times_one.binary.left, bindings.get(.a));
         try testing.expectEqual(null, bindings.get(.b));
 
-        bindings = try Multiplication.matches(&one_times_two);
+        bindings = try Multiplication.matches(one_times_two);
         try testing.expectEqual(one_times_two.binary.right, bindings.get(.a));
         try testing.expectEqual(null, bindings.get(.b));
 
@@ -82,20 +90,16 @@ test "a × 1(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Addition = @"a × 1"(T);
 
-        const one_times_two = Expression(T){ .binary = .{
-            .left = &.{ .number = 1.0 },
-            .operation = .multiplication,
-            .right = &.{ .number = 2.0 },
-        } };
+        const one_times_two = TestingData(T).get("1 * 2").?;
 
-        const bindings = try Addition.matches(&one_times_two);
-        const solution = try Addition.solve(&one_times_two, bindings, testing.allocator);
+        const bindings = try Addition.matches(one_times_two);
+        const solution = try Addition.solve(one_times_two, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
             .steps = @constCast(&[_]*const Step(T){
                 &.{
-                    .before = &one_times_two,
+                    .before = one_times_two,
                     .after = one_times_two.binary.right,
                     .description = "Anything multiplied by 1 is equal to itself",
                     .substeps = &.{},

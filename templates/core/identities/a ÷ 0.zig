@@ -1,3 +1,16 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{
+        .{
+            "1 / 0",
+            &Expression(T){ .binary = .{
+                .left = &.{ .number = 1.0 },
+                .operation = .division,
+                .right = &.{ .number = 0.0 },
+            } },
+        },
+    });
+}
+
 pub const Key = enum {
     a,
     b,
@@ -88,20 +101,16 @@ test "a ÷ 0(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Division = @"a ÷ 0"(T);
 
-        const one_div_zero = Expression(T){ .binary = .{
-            .left = &.{ .number = 1.0 },
-            .operation = .division,
-            .right = &.{ .number = 0.0 },
-        } };
+        const one_div_zero = TestingData(T).get("1 / 0").?;
 
-        const bindings = try Division.dynamic.matches(&one_div_zero);
-        const solution = try Division.dynamic.solve(&one_div_zero, bindings, testing.allocator);
+        const bindings = try Division.dynamic.matches(one_div_zero);
+        const solution = try Division.dynamic.solve(one_div_zero, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
             .steps = @constCast(&[_]*const Step(T){
                 &.{
-                    .before = &one_div_zero,
+                    .before = one_div_zero,
                     .after = &.{ .function = .{
                         .name = "error",
                         .arguments = @constCast(&[_]*const Expression(T){&.{ .variable = "Cannot divide by zero" }}),

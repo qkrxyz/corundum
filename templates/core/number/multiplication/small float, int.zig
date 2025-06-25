@@ -1,3 +1,15 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{
+        .{
+            "0.5 * 3.0", &Expression(T){ .binary = .{
+                .operation = .multiplication,
+                .left = &.{ .number = 0.5 },
+                .right = &.{ .number = 3.0 },
+            } },
+        },
+    });
+}
+
 const Key = template.Templates.get(.@"core/number/multiplication").key;
 
 pub fn @"small float, int"(comptime T: type) Variant(Key, T) {
@@ -127,21 +139,17 @@ test "small float, int(T).matches" {
 test "small float, int(T).solve" {
     const Multiplication = @"small float, int"(f64);
 
-    const half_of_three = Expression(f64){ .binary = .{
-        .operation = .multiplication,
-        .left = &.{ .number = 0.5 },
-        .right = &.{ .number = 3.0 },
-    } };
+    const half_of_three = TestingData(f64).get("0.5 * 3.0").?;
 
-    const bindings = try Multiplication.matches(&half_of_three);
-    const solution = try Multiplication.solve(&half_of_three, bindings, testing.allocator);
+    const bindings = try Multiplication.matches(half_of_three);
+    const solution = try Multiplication.solve(half_of_three, bindings, testing.allocator);
     defer solution.deinit(testing.allocator);
 
     const expected = Solution(f64){
         .steps = @constCast(&[_]*const Step(f64){
             // step 1: reinterpret; multiply
             &.{
-                .before = &half_of_three,
+                .before = half_of_three,
                 .after = &.{ .number = 15.0 },
                 .description = "Multiply the fractional part of 0.5 (as if it was an integer - 5) with 3",
                 .substeps = &.{},

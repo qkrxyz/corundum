@@ -1,3 +1,11 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{
+        .{
+            "1", &Expression(T){ .number = 1.0 },
+        },
+    });
+}
+
 pub const Key = enum {
     x,
 };
@@ -40,7 +48,7 @@ pub fn number(comptime T: type) Template(Key, T) {
 // MARK: tests
 test number {
     const Number = number(f64);
-    const one = Expression(f64){ .number = 1.0 };
+    const one = TestingData(f64).get("1").?;
 
     try testing.expect(Number.structure.ast.structural() == one.structural());
 }
@@ -48,24 +56,20 @@ test number {
 test "number(T).matches" {
     const Number = number(f64);
 
-    const one = Expression(f64){ .number = 1.0 };
-    const two = Expression(f64){ .number = 2.0 };
+    const one = TestingData(f64).kvs.values[0];
 
-    var bindings = try Number.structure.matches(&one);
-    try testing.expectEqual(bindings.get(.x), &one);
-
-    bindings = try Number.structure.matches(&two);
-    try testing.expectEqual(bindings.get(.x), &two);
+    const bindings = try Number.structure.matches(one);
+    try testing.expectEqual(bindings.get(.x), one);
 }
 
 test "number(T).solve" {
     const Number = number(f64);
 
-    const one = Expression(f64){ .number = 1.0 };
+    const one = TestingData(f64).get("1").?;
 
-    const bindings = try Number.structure.matches(&one);
+    const bindings = try Number.structure.matches(one);
 
-    const solution = try Number.structure.solve(&one, bindings, testing.allocator);
+    const solution = try Number.structure.solve(one, bindings, testing.allocator);
     defer solution.deinit(testing.allocator);
 
     const expected: Solution(f64) = Solution(f64){

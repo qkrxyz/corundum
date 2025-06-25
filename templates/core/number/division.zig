@@ -1,3 +1,26 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{
+        .{
+            "10 / 4", &Expression(T){
+                .binary = .{
+                    .left = &.{ .number = 10.0 },
+                    .right = &.{ .number = 4.0 },
+                    .operation = .division,
+                },
+            },
+        },
+        .{
+            "999 / 37", &Expression(T){
+                .binary = .{
+                    .left = &.{ .number = 999.0 },
+                    .right = &.{ .number = 37.0 },
+                    .operation = .division,
+                },
+            },
+        },
+    });
+}
+
 pub const Key = enum {
     a,
     b,

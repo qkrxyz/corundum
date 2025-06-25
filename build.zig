@@ -37,32 +37,28 @@ pub fn build(b: *std.Build) !void {
             .file_path = "all_templates.zig",
             .parent_name = "template",
             .get_code =
-            \\pub inline fn get(name: Kind) blk: {
-            \\    if (inner.get(name)) |module| {
-            \\        if (@hasDecl(module, "Key")) {
-            \\            break :blk struct {
-            \\                key: @TypeOf(@field(module, "Key")),
-            \\                module: @TypeOf(@field(module, std.enums.tagName(Kind, name).?[std.mem.lastIndexOf(u8, std.enums.tagName(Kind, name).?, "/").? + 1 ..])),
-            \\            };
-            \\        } else {
-            \\            break :blk @TypeOf(@field(module, std.enums.tagName(Kind, name).?[std.mem.lastIndexOf(u8, std.enums.tagName(Kind, name).?, "/").? + 1 ..]));
-            \\        }
+            \\pub inline fn get(comptime name: Kind) blk: {
+            \\    const module = inner.get(name).?;
+            \\
+            \\    if (@hasDecl(module, "Key")) {
+            \\        break :blk struct {
+            \\            key: @TypeOf(@field(module, "Key")),
+            \\            module: @TypeOf(@field(module, std.enums.tagName(Kind, name).?[std.mem.lastIndexOf(u8, std.enums.tagName(Kind, name).?, "/").? + 1 ..])),
+            \\        };
             \\    } else {
-            \\        break :blk void;
+            \\        break :blk @TypeOf(@field(module, std.enums.tagName(Kind, name).?[std.mem.lastIndexOf(u8, std.enums.tagName(Kind, name).?, "/").? + 1 ..]));
             \\    }
             \\} {
-            \\    if (inner.get(name)) |module| {
-            \\        if(@hasDecl(module, "Key")) {
-            \\            return .{
-            \\                .key = @field(module, "Key"),
-            \\                .module = @field(module, std.enums.tagName(Kind, name).?[std.mem.lastIndexOf(u8, std.enums.tagName(Kind, name).?, "/").? + 1 ..]),
-            \\            };
-            \\        } else {
-            \\            return @field(module, std.enums.tagName(Kind, name).?[std.mem.lastIndexOf(u8, std.enums.tagName(Kind, name).?, "/").? + 1 ..]);
-            \\        }
-            \\    }
+            \\    const module = inner.get(name).?;
             \\
-            \\    return;
+            \\    if(@hasDecl(module, "Key")) {
+            \\        return .{
+            \\            .key = @field(module, "Key"),
+            \\            .module = @field(module, std.enums.tagName(Kind, name).?[std.mem.lastIndexOf(u8, std.enums.tagName(Kind, name).?, "/").? + 1 ..]),
+            \\        };
+            \\    } else {
+            \\        return @field(module, std.enums.tagName(Kind, name).?[std.mem.lastIndexOf(u8, std.enums.tagName(Kind, name).?, "/").? + 1 ..]);
+            \\    }
             \\}
             \\
             ,
@@ -78,10 +74,12 @@ pub fn build(b: *std.Build) !void {
             \\    comptime var length: comptime_int = 0;
             \\
             \\    inline for (std.meta.fields(Kind)) |entry| {
-            \\        const value = get(@enumFromInt(entry.value));
-            \\        if (@typeInfo(@TypeOf(value)) == .@"struct") {
-            \\            kinds[length] = @enumFromInt(entry.value);
-            \\            length += 1;
+            \\        if(comptime std.mem.indexOf(u8, entry.name, "metadata") == null) {
+            \\            const value = get(@enumFromInt(entry.value));
+            \\            if (@typeInfo(@TypeOf(value)) == .@"struct") {
+            \\                kinds[length] = @enumFromInt(entry.value);
+            \\                length += 1;
+            \\            }
             \\        }
             \\    }
             \\
@@ -139,6 +137,13 @@ pub fn build(b: *std.Build) !void {
             \\    return &result;
             \\}
             \\
+            \\const Expression = @import("expr").Expression;
+            \\
+            \\pub inline fn tests(comptime kind: Kind, comptime T: type) std.StaticStringMap(*const Expression(T)) {
+            \\    const module = inner.get(kind).?;
+            \\    return module.TestingData(T);
+            \\}
+            \\
             \\pub inline fn variants(comptime kind: Kind, comptime T: type) blk: {
             \\    @setEvalBranchQuota((1 << 32) - 1);
             \\    const module = get(kind);
@@ -148,9 +153,11 @@ pub fn build(b: *std.Build) !void {
             \\    var length: comptime_int = 0;
             \\
             \\    for (std.meta.fields(Kind)) |entry| {
-            \\        const value = get(@enumFromInt(entry.value));
-            \\        if (@typeInfo(@TypeOf(value)) == .@"fn" and std.mem.indexOf(u8, entry.name, @tagName(kind)) != null) {
-            \\            length += 1;
+            \\        if(std.mem.indexOf(u8, entry.name, "metadata") == null) {
+            \\            const value = get(@enumFromInt(entry.value));
+            \\            if (@typeInfo(@TypeOf(value)) == .@"fn" and std.mem.indexOf(u8, entry.name, @tagName(kind)) != null) {
+            \\                length += 1;
+            \\            }
             \\        }
             \\    }
             \\
@@ -165,10 +172,12 @@ pub fn build(b: *std.Build) !void {
             \\    var length: comptime_int = 0;
             \\
             \\    inline for (std.meta.fields(Kind)) |entry| {
-            \\        const value = get(@enumFromInt(entry.value));
-            \\        if (@typeInfo(@TypeOf(value)) == .@"fn" and std.mem.indexOf(u8, entry.name, @tagName(kind)) != null) {
-            \\            result[length] = value(T);
-            \\            length += 1;
+            \\        if(comptime std.mem.indexOf(u8, entry.name, "metadata") == null) {
+            \\            const value = get(@enumFromInt(entry.value));
+            \\            if (@typeInfo(@TypeOf(value)) == .@"fn" and std.mem.indexOf(u8, entry.name, @tagName(kind)) != null) {
+            \\                result[length] = value(T);
+            \\                length += 1;
+            \\            }
             \\        }
             \\    }
             \\
@@ -259,6 +268,22 @@ pub fn build(b: *std.Build) !void {
         .install_subdir = "docs",
     });
     docs_step.dependOn(&install_docs.step);
+
+    // perf
+    const perf = b.addExecutable(.{
+        .name = "perf",
+        .root_source_file = b.path("src/perf.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    perf.root_module.addImport("corundum", root);
+
+    const perf_step = b.step("perf", "Generate performance metrics");
+    perf_step.dependOn(wasm_step);
+
+    const run_perf = b.addRunArtifact(perf);
+    run_perf.step.dependOn(b.getInstallStep());
+    perf_step.dependOn(&run_perf.step);
 }
 
 fn modules(b: *std.Build, root: *std.Build.Module, tests: *std.Build.Step.Run) !void {

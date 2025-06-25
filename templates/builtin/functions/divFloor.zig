@@ -1,9 +1,27 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{
+        .{
+            "7393 / 23",
+            &Expression(T){ .function = .{
+                .name = "divFloor",
+                .arguments = @constCast(&[_]*const Expression(T){
+                    &.{ .number = 7393 },
+                    &.{ .number = 23 },
+                }),
+                .body = null,
+            } },
+        },
+    });
+}
+
 pub const Key = enum {
     a,
     b,
 };
 
 pub fn divFloor(comptime T: type) Template(Key, T) {
+    const variants = template.Templates.variants(.@"builtin/functions/divFloor", T);
+
     const Impl = struct {
         // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
@@ -46,42 +64,21 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
         // - 7360, 7383, 7406, 7383       | 320, 321, 322, 321
         // Since we can't increment the multiplier by a value lower than 1, we have our result.
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            const I = @Type(.{ .int = .{ .bits = @bitSizeOf(T), .signedness = .signed } });
+            for (variants) |variant| {
+                const new_bindings = variant.matches(expression) catch continue;
 
-            const negate = (bindings.get(.a).?.number < 0.0) != (bindings.get(.b).?.number < 0.0);
+                return variant.solve(expression, new_bindings, allocator);
+            }
+
+            const I = @Type(.{ .int = .{ .bits = @bitSizeOf(T), .signedness = .signed } });
 
             const a: I = @intFromFloat(@abs(bindings.get(.a).?.number));
             const b: I = @intFromFloat(@abs(bindings.get(.b).?.number));
 
-            // TODO extract these into their own variants, along with the "one of the inputs is negative" case.
-            if (a < b) {
-                const solution = try Solution(T).init(1, allocator);
-                solution.steps[0] = try (Step(T){
-                    .before = try expression.clone(allocator),
-                    .after = try (Expression(T){ .number = 0.0 }).clone(allocator),
-                    .description = try std.fmt.allocPrint(allocator, "Since {d} is smaller than {d}, the result is 0.", .{ a, b }),
-                    .substeps = &.{},
-                }).clone(allocator);
-
-                return solution;
-            }
-
-            if (a == b) {
-                const solution = try Solution(T).init(1, allocator);
-                solution.steps[0] = try (Step(T){
-                    .before = try expression.clone(allocator),
-                    .after = try (Expression(T){ .number = 1.0 }).clone(allocator),
-                    .description = try std.fmt.allocPrint(allocator, "Since {d} is the same as {d}, the result is 1.", .{ a, b }),
-                    .substeps = &.{},
-                }).clone(allocator);
-
-                return solution;
-            }
-
             var steps = try std.ArrayList(*const Step(T)).initCapacity(
                 allocator,
                 blk: {
-                    var length: usize = 1 + @as(usize, @intFromBool(negate));
+                    var length: usize = 1;
                     while (try std.math.powi(usize, 10, length) <= a) : (length += 1) {}
                     break :blk length;
                 },
@@ -97,7 +94,7 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
             while (b * x <= a) : (x *= 10) {
                 try magnitude_steps.append(try (Step(T){
                     .before = try (Expression(T){ .binary = .{
-                        .left = bindings.get(.b).?,
+                        .left = &.{ .number = @floatFromInt(b) },
                         .right = &.{ .number = @floatFromInt(x) },
                         .operation = .multiplication,
                     } }).clone(allocator),
@@ -109,7 +106,7 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
 
             try magnitude_steps.append(try (Step(T){
                 .before = try (Expression(T){ .binary = .{
-                    .left = bindings.get(.b).?,
+                    .left = &.{ .number = @floatFromInt(b) },
                     .right = &.{ .number = @floatFromInt(x) },
                     .operation = .multiplication,
                 } }).clone(allocator),
@@ -138,13 +135,20 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
             while (y != 1) {
                 const before = x;
 
-                var this_refine_steps = std.ArrayList(*const Step(T)).init(allocator);
+                var this_refine_steps = try std.ArrayList(*const Step(T)).initCapacity(
+                    allocator,
+                    blk: {
+                        var result: I = 1;
+                        while (b * (x + y * result) <= a) : (result += 1) {}
+                        break :blk @intCast(result);
+                    },
+                );
 
                 while (b * (x + y * i) <= a) : (i += 1) {
                     try this_refine_steps.append(try (Step(T){
                         .before = try (Expression(T){
                             .binary = .{
-                                .left = bindings.get(.b).?,
+                                .left = &.{ .number = @floatFromInt(b) },
                                 .right = &.{ .function = .{
                                     .name = "add",
                                     .arguments = @constCast(&[_]*const Expression(T){
@@ -169,7 +173,7 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
                 try this_refine_steps.append(try (Step(T){
                     .before = try (Expression(T){
                         .binary = .{
-                            .left = bindings.get(.b).?,
+                            .left = &.{ .number = @floatFromInt(b) },
                             .right = &.{ .function = .{
                                 .name = "add",
                                 .arguments = @constCast(&[_]*const Expression(T){
@@ -220,7 +224,7 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
                 try digit_steps.append(try (Step(T){
                     .before = try (Expression(T){
                         .binary = .{
-                            .left = bindings.get(.b).?,
+                            .left = &.{ .number = @floatFromInt(b) },
                             .right = &.{ .function = .{
                                 .name = "add",
                                 .arguments = @constCast(&[_]*const Expression(T){
@@ -241,7 +245,7 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
             try digit_steps.append(try (Step(T){
                 .before = try (Expression(T){
                     .binary = .{
-                        .left = bindings.get(.b).?,
+                        .left = &.{ .number = @floatFromInt(b) },
                         .right = &.{ .function = .{
                             .name = "add",
                             .arguments = @constCast(&[_]*const Expression(T){
@@ -273,20 +277,6 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
                 .description = try allocator.dupe(u8, "Refine the search"),
                 .substeps = try digit_steps.toOwnedSlice(),
             }).clone(allocator));
-
-            // MARK: negation
-            if (negate) {
-                const last = steps.getLast().after.?;
-
-                const remainder = (x + 1) * b - a;
-
-                try steps.append(try (Step(T){
-                    .before = try last.clone(allocator),
-                    .after = try (Expression(T){ .number = -last.number - 1 }).clone(allocator),
-                    .description = try std.fmt.allocPrint(allocator, "Since our original input contained negative numbers, we also have to change the sign of our result and also subtract one.\n\nThis is because $-{d} \\times {d} + {d}$ (the remainder) $= -{d} + {d} = -{d}$", .{ x + 1, b, remainder, (x + 1) * b, remainder, a }),
-                    .substeps = &.{},
-                }).clone(allocator));
-            }
 
             return Solution(T){ .steps = try steps.toOwnedSlice() };
         }
@@ -340,17 +330,10 @@ test "divFloor(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Division = divFloor(T);
 
-        const function = Expression(T){ .function = .{
-            .name = "divFloor",
-            .arguments = @constCast(&[_]*const Expression(T){
-                &.{ .number = 7393 },
-                &.{ .number = 23 },
-            }),
-            .body = null,
-        } };
+        const function = TestingData(T).get("7393 / 23").?;
 
-        const bindings = try Division.structure.matches(&function);
-        const solution = try Division.structure.solve(&function, bindings, testing.allocator);
+        const bindings = try Division.structure.matches(function);
+        const solution = try Division.structure.solve(function, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){

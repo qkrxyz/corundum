@@ -1,3 +1,15 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{
+        .{
+            "1.5 * 2", &Expression(T){ .binary = .{
+                .operation = .multiplication,
+                .left = &.{ .number = 1.5 },
+                .right = &.{ .number = 2.0 },
+            } },
+        },
+    });
+}
+
 const Key = template.Templates.get(.@"core/number/multiplication").key;
 
 pub fn @"float, int"(comptime T: type) Variant(Key, T) {
@@ -189,11 +201,7 @@ test "float, int(T).matches" {
         .right = &.{ .number = 3.0 },
     } };
 
-    const half_of_ten = Expression(f64){ .binary = .{
-        .operation = .multiplication,
-        .left = &.{ .number = 0.5 },
-        .right = &.{ .number = 10.0 },
-    } };
+    const three_halves_times_two = TestingData(f64).get("1.5 * 2").?;
 
     const half_of_quarter = Expression(f64){ .binary = .{
         .operation = .multiplication,
@@ -202,9 +210,9 @@ test "float, int(T).matches" {
     } };
 
     try testing.expectEqual(Bindings(Key, f64).init(.{
-        .a = half_of_ten.binary.left,
-        .b = half_of_ten.binary.right,
-    }), Multiplication.matches(&half_of_ten));
+        .a = three_halves_times_two.binary.left,
+        .b = three_halves_times_two.binary.right,
+    }), Multiplication.matches(three_halves_times_two));
 
     try testing.expectError(error.NoFloatAndInt, Multiplication.matches(&two_times_three));
     try testing.expectError(error.NoFloatAndInt, Multiplication.matches(&half_of_quarter));
@@ -213,21 +221,17 @@ test "float, int(T).matches" {
 test "float, int(T).solve" {
     const Multiplication = @"float, int"(f64);
 
-    const three_halves_times_two = Expression(f64){ .binary = .{
-        .operation = .multiplication,
-        .left = &.{ .number = 1.5 },
-        .right = &.{ .number = 2.0 },
-    } };
+    const three_halves_times_two = TestingData(f64).get("1.5 * 2").?;
 
-    const bindings = try Multiplication.matches(&three_halves_times_two);
-    const solution = try Multiplication.solve(&three_halves_times_two, bindings, testing.allocator);
+    const bindings = try Multiplication.matches(three_halves_times_two);
+    const solution = try Multiplication.solve(three_halves_times_two, bindings, testing.allocator);
     defer solution.deinit(testing.allocator);
 
     const expected = Solution(f64){
         .steps = @constCast(&[_]*const Step(f64){
             // step 1: rewrite
             &.{
-                .before = &three_halves_times_two,
+                .before = three_halves_times_two,
                 .after = &.{ .binary = .{
                     .operation = .addition,
                     .left = &.{ .binary = .{

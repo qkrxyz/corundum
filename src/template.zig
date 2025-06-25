@@ -116,6 +116,7 @@ const expr = @import("expr");
 const templates = @import("templates");
 
 pub const Templates = templates.templates;
+pub const TemplatesKind = templates.Kind;
 
 const Expression = expr.Expression;
 pub const Solution = @import("template/solution").Solution;

@@ -1,3 +1,23 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{
+        // TODO move this into the variant
+        .{
+            "3 - (-2)", &Expression(T){ .binary = .{
+                .operation = .subtraction,
+                .left = &.{ .number = 3.0 },
+                .right = &.{ .number = -2.0 },
+            } },
+        },
+        .{
+            "2 - 1", &Expression(T){ .binary = .{
+                .operation = .subtraction,
+                .left = &.{ .number = 2.0 },
+                .right = &.{ .number = 1.0 },
+            } },
+        },
+    });
+}
+
 pub const Key = enum {
     a,
     b,
@@ -97,11 +117,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
 // MARK: tests
 test subtraction {
     const Subtraction = subtraction(f64);
-    const two_minus_one = Expression(f64){ .binary = .{
-        .operation = .subtraction,
-        .left = &.{ .number = 2.0 },
-        .right = &.{ .number = 1.0 },
-    } };
+    const two_minus_one = TestingData(f64).kvs.values[0];
 
     try testing.expect(Subtraction.structure.ast.structural() == two_minus_one.structural());
 }
@@ -109,22 +125,14 @@ test subtraction {
 test "subtraction(T).matches" {
     const Subtraction = subtraction(f64);
 
-    const two_minus_one = Expression(f64){ .binary = .{
-        .operation = .subtraction,
-        .left = &.{ .number = 2.0 },
-        .right = &.{ .number = 1.0 },
-    } };
-    const three_minus_minus_two = Expression(f64){ .binary = .{
-        .operation = .subtraction,
-        .left = &.{ .number = 3.0 },
-        .right = &.{ .number = -2.0 },
-    } };
+    const two_minus_one = TestingData(f64).kvs.values[1];
+    const three_minus_minus_two = TestingData(f64).kvs.values[0];
 
-    var bindings = try Subtraction.structure.matches(&two_minus_one);
+    var bindings = try Subtraction.structure.matches(two_minus_one);
     try testing.expectEqualDeep(bindings.get(.a), two_minus_one.binary.left);
     try testing.expectEqualDeep(bindings.get(.b), two_minus_one.binary.right);
 
-    bindings = try Subtraction.structure.matches(&three_minus_minus_two);
+    bindings = try Subtraction.structure.matches(three_minus_minus_two);
     try testing.expectEqualDeep(bindings.get(.a), three_minus_minus_two.binary.left);
     try testing.expectEqualDeep(bindings.get(.b), three_minus_minus_two.binary.right);
 }
@@ -132,20 +140,16 @@ test "subtraction(T).matches" {
 test "subtraction(T).solve" {
     const Subtraction = subtraction(f64);
 
-    const two_minus_one = Expression(f64){ .binary = .{
-        .operation = .subtraction,
-        .left = &.{ .number = 2.0 },
-        .right = &.{ .number = 1.0 },
-    } };
+    const two_minus_one = TestingData(f64).get("2 - 1").?;
 
-    const bindings = try Subtraction.structure.matches(&two_minus_one);
-    const solution = try Subtraction.structure.solve(&two_minus_one, bindings, testing.allocator);
+    const bindings = try Subtraction.structure.matches(two_minus_one);
+    const solution = try Subtraction.structure.solve(two_minus_one, bindings, testing.allocator);
     defer solution.deinit(testing.allocator);
 
     const expected = Solution(f64){
         .steps = @constCast(&[_]*const Step(f64){
             &.{
-                .before = &two_minus_one,
+                .before = two_minus_one,
                 .after = &.{ .number = 1.0 },
                 .description = "Subtract 1 from 2",
                 .substeps = &.{},
@@ -159,11 +163,7 @@ test "subtraction(T).solve" {
 test "subtraction(T).solve - `±a - (-b)`" {
     const Subtraction = subtraction(f64);
 
-    const three_minus_minus_two = Expression(f64){ .binary = .{
-        .operation = .subtraction,
-        .left = &.{ .number = 3.0 },
-        .right = &.{ .number = -2.0 },
-    } };
+    const three_minus_minus_two = TestingData(f64).get("3 - (-2)").?;
 
     const three_plus_two = Expression(f64){ .binary = .{
         .operation = .addition,
@@ -171,14 +171,14 @@ test "subtraction(T).solve - `±a - (-b)`" {
         .right = &.{ .number = 2.0 },
     } };
 
-    const bindings = try Subtraction.structure.matches(&three_minus_minus_two);
-    const solution = try Subtraction.structure.solve(&three_minus_minus_two, bindings, testing.allocator);
+    const bindings = try Subtraction.structure.matches(three_minus_minus_two);
+    const solution = try Subtraction.structure.solve(three_minus_minus_two, bindings, testing.allocator);
     defer solution.deinit(testing.allocator);
 
     const expected = Solution(f64){
         .steps = @constCast(&[_]*const Step(f64){
             &.{
-                .before = &three_minus_minus_two,
+                .before = three_minus_minus_two,
                 .after = &three_plus_two,
                 .description = "Change the sign",
                 .substeps = &.{},

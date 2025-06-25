@@ -1,23 +1,29 @@
 pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
-            "4 / 1", &Expression(T){ .binary = .{
-                .left = &.{ .number = 4.0 },
-                .right = &.{ .number = 1.0 },
-                .operation = .division,
-            } },
+            "30 / 1",
+            &Expression(T){
+                .function = .{
+                    .name = "divFloor",
+                    .arguments = @constCast(&[_]*const Expression(T){
+                        &.{ .number = 30.0 },
+                        &.{ .number = 1.0 },
+                    }),
+                    .body = null,
+                },
+            },
         },
     });
 }
 
-const Key = template.Templates.get(.@"core/number/division").key;
+const Key = template.Templates.get(.@"builtin/functions/divFloor").key;
 
 pub fn @"a ÷ 1"(comptime T: type) Variant(Key, T) {
     const Impl = struct {
         // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            if (expression.binary.right.number == 1.0) return Bindings(Key, T).init(.{
-                .a = expression.binary.left,
+            if (expression.function.arguments[1].number == 1.0) return Bindings(Key, T).init(.{
+                .a = expression.function.arguments[0],
             });
 
             return error.NotApplicable;
@@ -40,7 +46,7 @@ pub fn @"a ÷ 1"(comptime T: type) Variant(Key, T) {
 
     // MARK: variant
     return Variant(Key, T){
-        .name = "Number division: a ÷ 1",
+        .name = "Builtin function: number division, rounded down: a ÷ 1",
         .matches = Impl.matches,
         .solve = Impl.solve,
         .score = 999,
@@ -52,17 +58,17 @@ test @"a ÷ 1" {
     inline for (.{ f16, f32, f64, f128 }) |T| {
         const Division = @"a ÷ 1"(T);
 
-        const four_div_1 = TestingData(T).get("4 / 1").?;
+        const thirty_div_1 = TestingData(T).get("30 / 1").?;
 
-        const bindings = try Division.matches(four_div_1);
-        const solution = try Division.solve(four_div_1, bindings, testing.allocator);
+        const bindings = try Division.matches(thirty_div_1);
+        const solution = try Division.solve(thirty_div_1, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
             .steps = @constCast(&[_]*const Step(T){
                 &.{
-                    .before = four_div_1,
-                    .after = &.{ .number = 4.0 },
+                    .before = thirty_div_1,
+                    .after = &.{ .number = 30.0 },
                     .description = "Division by one does nothing",
                     .substeps = &.{},
                 },
@@ -80,6 +86,7 @@ const expr = @import("expr");
 const template = @import("template");
 
 const Expression = expr.Expression;
+const Template = template.Template;
 const Variant = template.Variant;
 const Solution = template.Solution;
 const Step = template.Step;

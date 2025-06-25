@@ -1,3 +1,15 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{
+        .{
+            "2 * 3", &Expression(T){ .binary = .{
+                .operation = .multiplication,
+                .left = &.{ .number = 2.0 },
+                .right = &.{ .number = 3.0 },
+            } },
+        },
+    });
+}
+
 const Key = template.Templates.get(.@"core/number/multiplication").key;
 
 pub fn @"int, int"(comptime T: type) Variant(Key, T) {
@@ -51,11 +63,7 @@ pub fn @"int, int"(comptime T: type) Variant(Key, T) {
 test "int, int(T).matches" {
     const Multiplication = @"int, int"(f64);
 
-    const two_times_three = Expression(f64){ .binary = .{
-        .operation = .multiplication,
-        .left = &.{ .number = 2.0 },
-        .right = &.{ .number = 3.0 },
-    } };
+    const two_times_three = TestingData(f64).get("2 * 3").?;
 
     const half_of_ten = Expression(f64){ .binary = .{
         .operation = .multiplication,
@@ -66,27 +74,24 @@ test "int, int(T).matches" {
     try testing.expectEqual(Bindings(Key, f64).init(.{
         .a = two_times_three.binary.left,
         .b = two_times_three.binary.right,
-    }), Multiplication.matches(&two_times_three));
+    }), Multiplication.matches(two_times_three));
+
     try testing.expectError(error.NotAnInteger, Multiplication.matches(&half_of_ten));
 }
 
 test "int, int(T).solve" {
     const Multiplication = @"int, int"(f64);
 
-    const two_times_three = Expression(f64){ .binary = .{
-        .operation = .multiplication,
-        .left = &.{ .number = 2.0 },
-        .right = &.{ .number = 3.0 },
-    } };
+    const two_times_three = TestingData(f64).get("2 * 3").?;
 
-    const bindings = try Multiplication.matches(&two_times_three);
-    const solution = try Multiplication.solve(&two_times_three, bindings, testing.allocator);
+    const bindings = try Multiplication.matches(two_times_three);
+    const solution = try Multiplication.solve(two_times_three, bindings, testing.allocator);
     defer solution.deinit(testing.allocator);
 
     const expected = Solution(f64){
         .steps = @constCast(&[_]*const Step(f64){
             &.{
-                .before = &two_times_three,
+                .before = two_times_three,
                 .after = &.{ .number = 6.0 },
                 .description = "Multiply 2 by 3",
                 .substeps = &.{},

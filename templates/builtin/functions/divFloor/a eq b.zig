@@ -1,23 +1,31 @@
 pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
-            "4 / 1", &Expression(T){ .binary = .{
-                .left = &.{ .number = 4.0 },
-                .right = &.{ .number = 1.0 },
-                .operation = .division,
-            } },
+            "9 / 9", &Expression(T){
+                .function = .{
+                    .name = "divFloor",
+                    .arguments = @constCast(&[_]*const Expression(T){
+                        &.{ .number = 9.0 },
+                        &.{ .number = 9.0 },
+                    }),
+                    .body = null,
+                },
+            },
         },
     });
 }
 
-const Key = template.Templates.get(.@"core/number/division").key;
+const Key = template.Templates.get(.@"builtin/functions/divFloor").key;
 
-pub fn @"a ÷ 1"(comptime T: type) Variant(Key, T) {
+pub fn @"a eq b"(comptime T: type) Variant(Key, T) {
     const Impl = struct {
         // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            if (expression.binary.right.number == 1.0) return Bindings(Key, T).init(.{
-                .a = expression.binary.left,
+            const arguments = expression.function.arguments;
+
+            if (arguments[0].number == arguments[1].number) return Bindings(Key, T).init(.{
+                .a = arguments[0],
+                .b = arguments[1],
             });
 
             return error.NotApplicable;
@@ -25,45 +33,47 @@ pub fn @"a ÷ 1"(comptime T: type) Variant(Key, T) {
 
         // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            const a = bindings.get(.a).?;
+            const a = bindings.get(.a).?.number;
+            const b = bindings.get(.b).?.number;
 
             const solution = try Solution(T).init(1, allocator);
             solution.steps[0] = try (Step(T){
                 .before = try expression.clone(allocator),
-                .after = try a.clone(allocator),
-                .description = try allocator.dupe(u8, "Division by one does nothing"),
+                .after = try (Expression(T){ .number = 1.0 }).clone(allocator),
+                .description = try std.fmt.allocPrint(allocator, "Since {d} is equal to {d}, the result is 1.", .{ a, b }),
                 .substeps = &.{},
             }).clone(allocator);
+
             return solution;
         }
     };
 
     // MARK: variant
     return Variant(Key, T){
-        .name = "Number division: a ÷ 1",
+        .name = "Builtin function: number division, rounded down: a = b",
         .matches = Impl.matches,
         .solve = Impl.solve,
-        .score = 999,
+        .score = 50,
     };
 }
 
-// MARK: tests
-test @"a ÷ 1" {
+// TODO tests
+test @"a eq b" {
     inline for (.{ f16, f32, f64, f128 }) |T| {
-        const Division = @"a ÷ 1"(T);
+        const Division = @"a eq b"(T);
 
-        const four_div_1 = TestingData(T).get("4 / 1").?;
+        const nine = TestingData(T).get("9 / 9").?;
 
-        const bindings = try Division.matches(four_div_1);
-        const solution = try Division.solve(four_div_1, bindings, testing.allocator);
+        const bindings = try Division.matches(nine);
+        const solution = try Division.solve(nine, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
             .steps = @constCast(&[_]*const Step(T){
                 &.{
-                    .before = four_div_1,
-                    .after = &.{ .number = 4.0 },
-                    .description = "Division by one does nothing",
+                    .before = nine,
+                    .after = &.{ .number = 1.0 },
+                    .description = "Since 9 is equal to 9, the result is 1.",
                     .substeps = &.{},
                 },
             }),
@@ -80,6 +90,7 @@ const expr = @import("expr");
 const template = @import("template");
 
 const Expression = expr.Expression;
+const Template = template.Template;
 const Variant = template.Variant;
 const Solution = template.Solution;
 const Step = template.Step;

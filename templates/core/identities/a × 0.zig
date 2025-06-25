@@ -1,3 +1,15 @@
+pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+    return .initComptime(.{
+        .{
+            "1 * 0", &Expression(T){ .binary = .{
+                .left = &.{ .number = 1.0 },
+                .operation = .multiplication,
+                .right = &.{ .number = 0.0 },
+            } },
+        },
+    });
+}
+
 pub const Key = enum {
     a,
     b,
@@ -87,20 +99,16 @@ test "a × 0(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Multiplication = @"a × 0"(T);
 
-        const one_times_zero = Expression(T){ .binary = .{
-            .left = &.{ .number = 1.0 },
-            .operation = .multiplication,
-            .right = &.{ .number = 0.0 },
-        } };
+        const one_times_zero = TestingData(T).get("1 * 0").?;
 
-        const bindings = try Multiplication.dynamic.matches(&one_times_zero);
-        const solution = try Multiplication.dynamic.solve(&one_times_zero, bindings, testing.allocator);
+        const bindings = try Multiplication.dynamic.matches(one_times_zero);
+        const solution = try Multiplication.dynamic.solve(one_times_zero, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
             .steps = @constCast(&[_]*const Step(T){
                 &.{
-                    .before = &one_times_zero,
+                    .before = one_times_zero,
                     .after = &.{ .number = 0.0 },
                     .description = "Anything multiplied by 0 is equal to 0",
                     .substeps = &.{},
