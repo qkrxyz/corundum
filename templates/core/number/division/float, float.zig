@@ -1,37 +1,26 @@
 pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
-        .{
-            "30 / 4.5", &Expression(T){
-                .binary = .{
-                    .left = &.{ .number = 30 },
-                    .right = &.{ .number = 4.5 },
-                    .operation = .division,
-                },
+        .{ "4.5 / 1.5", &Expression(T){
+            .binary = .{
+                .left = &.{ .number = 4.5 },
+                .right = &.{ .number = 1.5 },
+                .operation = .division,
             },
-        },
-        .{
-            "4 / 0.15", &Expression(T){
-                .binary = .{
-                    .left = &.{ .number = 4 },
-                    .right = &.{ .number = 0.15 },
-                    .operation = .division,
-                },
-            },
-        },
+        } },
     });
 }
 
 const Key = template.Templates.get(.@"core/number/division").key;
 
-pub fn @"int, float"(comptime T: type) Variant(Key, T) {
+pub fn @"float, float"(comptime T: type) Variant(Key, T) {
     const Impl = struct {
         // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             var bindings = Bindings(Key, T).init(.{});
 
             bindings.put(.a, expression.binary.left);
-            if (@mod(bindings.get(.a).?.number, 1.0) != 0.0) {
-                return error.NotAnInteger;
+            if (@mod(bindings.get(.a).?.number, 1.0) == 0.0) {
+                return error.NotAFloat;
             }
 
             bindings.put(.b, expression.binary.right);
@@ -51,7 +40,7 @@ pub fn @"int, float"(comptime T: type) Variant(Key, T) {
             // shift
             const factor = blk: {
                 var i: T = 1.0;
-                while (@mod(b * i, 1.0) != 0.0) : (i *= 10.0) {}
+                while (@mod(b * i, 1.0) != 0.0 or @mod(a * i, 1.0) != 0.0) : (i *= 10.0) {}
                 break :blk i;
             };
 
@@ -95,21 +84,21 @@ pub fn @"int, float"(comptime T: type) Variant(Key, T) {
 
     // MARK: variant
     return Variant(Key, T){
-        .name = "Number division: integer / float",
+        .name = "Number division: float / float",
         .matches = Impl.matches,
         .solve = Impl.solve,
         .score = 50,
     };
 }
 
-test @"int, float" {
+test @"float, float" {
     inline for (.{ f32, f64, f128 }) |T| {
-        const Division = @"int, float"(T);
+        const Division = @"float, float"(T);
 
-        const thirty_div_four_half = TestingData(T).get("30 / 4.5").?;
+        const four_half_div_one_half = TestingData(T).get("4.5 / 1.5").?;
 
-        const bindings = try Division.matches(thirty_div_four_half);
-        const solution = try Division.solve(thirty_div_four_half, bindings, testing.allocator);
+        const bindings = try Division.matches(four_half_div_one_half);
+        const solution = try Division.solve(four_half_div_one_half, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
     }
 }

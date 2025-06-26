@@ -77,7 +77,7 @@ pub fn sum(comptime T: type) Template(Key, T) {
                 }
 
                 const new_args = blk: {
-                    var arguments = std.ArrayList(*const Expression(T)).init(allocator);
+                    var arguments = try std.ArrayList(*const Expression(T)).initCapacity(allocator, 1 + (bindings.len - i));
 
                     try arguments.append(&Expression(T){ .number = result });
                     if (bindings.len >= i + 1) try arguments.appendSlice(bindings[i + 1 ..]);

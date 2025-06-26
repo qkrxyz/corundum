@@ -1,5 +1,16 @@
 pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
-    return .initComptime(.{});
+    return .initComptime(.{
+        .{
+            "9 / -5", &Expression(T){ .function = .{
+                .name = "divFloor",
+                .arguments = @constCast(&[_]*const Expression(T){
+                    &.{ .number = 9.0 },
+                    &.{ .number = -5.0 },
+                }),
+                .body = null,
+            } },
+        },
+    });
 }
 
 const Key = template.Templates.get(.@"builtin/functions/divFloor").key;
@@ -44,6 +55,7 @@ pub fn negative(comptime T: type) Variant(Key, T) {
                 }),
                 allocator,
             );
+            defer allocator.free(division.steps);
 
             const last = division.steps[division.steps.len - 1].after.?;
             const x = last.number;
@@ -72,7 +84,90 @@ pub fn negative(comptime T: type) Variant(Key, T) {
     };
 }
 
-// TODO tests
+// MARK: tests
+test negative {
+    inline for (.{ f32, f64, f128 }) |T| {
+        const Division = negative(T);
+
+        const nine_div_minus_five = TestingData(T).get("9 / -5").?;
+
+        const bindings = try Division.matches(nine_div_minus_five);
+        const solution = try Division.solve(nine_div_minus_five, bindings, testing.allocator);
+        defer solution.deinit(testing.allocator);
+
+        const expected = Solution(T){
+            .steps = @constCast(&[_]*const Step(T){
+                &.{
+                    .before = &.{ .number = 1.0 },
+                    .after = &.{ .number = 1.0 },
+                    .description = "Figure out the magnitude of the result",
+                    .substeps = @constCast(&[_]*const Step(T){
+                        &.{
+                            .before = &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 5.0 },
+                                .right = &.{ .number = 1.0 },
+                            } },
+                            .after = &.{ .number = 5.0 },
+                            .description = "Since 5 is less than or equal to 9, we add 1 decimal place to our multiplier",
+                            .substeps = &.{},
+                        },
+                        &.{
+                            .before = &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 5.0 },
+                                .right = &.{ .number = 10.0 },
+                            } },
+                            .after = &.{ .number = 5.0 },
+                            .description = "Since 50 is more than 9, divide the multiplier by 10",
+                            .substeps = &.{},
+                        },
+                    }),
+                },
+                &.{
+                    .before = &.{ .number = 1.0 },
+                    .after = &.{ .number = 1.0 },
+                    .description = "Refine the search",
+                    .substeps = @constCast(&[_]*const Step(T){
+                        &.{
+                            .before = &.{ .binary = .{
+                                .operation = .multiplication,
+                                .left = &.{ .number = 5 },
+                                .right = &.{ .function = .{
+                                    .name = "add",
+                                    .arguments = @constCast(&[_]*const Expression(T){
+                                        &.{ .number = 1 },
+                                        &.{ .binary = .{
+                                            .operation = .multiplication,
+                                            .left = &.{ .number = 1.0 },
+                                            .right = &.{ .binary = .{
+                                                .operation = .subtraction,
+                                                .left = &.{ .number = 1.0 },
+                                                .right = &.{ .number = 1.0 },
+                                            } },
+                                        } },
+                                    }),
+                                    .body = null,
+                                } },
+                            } },
+                            .after = &.{ .number = 5.0 },
+                            .description = "Since 10 is more than 9, we go back to the previous multiplier and since the magnitude is equal to 1, we found the answer.",
+                            .substeps = &.{},
+                        },
+                    }),
+                },
+                &.{
+                    .before = &.{ .number = 1.0 },
+                    .after = &.{ .number = -2.0 },
+                    .description = "Since our original input contained negative numbers, we also have to change the sign of our result and also subtract one.\n\nThis is because $-2 \\times -5 + -19$ (the remainder) $= --10 + -19 = -9$",
+                    .substeps = &.{},
+                },
+            }),
+        };
+
+        try testing.expectEqualDeep(expected, solution);
+    }
+}
 
 const std = @import("std");
 const testing = std.testing;

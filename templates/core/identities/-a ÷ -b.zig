@@ -18,8 +18,8 @@ pub fn @"-a ÷ -b"(comptime T: type) Template(Key, T) {
             const right = (expression.binary.right.* == .number and expression.binary.right.number < 0.0) or (expression.binary.right.* == .unary and expression.binary.right.unary.operation == .negation);
 
             if (left and right) return Bindings(Key, T).init(.{
-                .a = if (expression.binary.left.* == .number) &.{ .number = @abs(expression.binary.left.number) } else expression.binary.left.unary.operand,
-                .b = if (expression.binary.right.* == .number) &.{ .number = @abs(expression.binary.right.number) } else expression.binary.right.unary.operand,
+                .a = expression.binary.left,
+                .b = expression.binary.right,
             });
 
             return error.NotApplicable;
@@ -27,16 +27,25 @@ pub fn @"-a ÷ -b"(comptime T: type) Template(Key, T) {
 
         // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            const a = bindings.get(.a).?;
-            const b = bindings.get(.b).?;
+            const a = switch (bindings.get(.a).?.*) {
+                .number => |number| try (Expression(T){ .number = number }).clone(allocator),
+                .unary => |unary| try unary.operand.clone(allocator),
+                else => unreachable,
+            };
+
+            const b = switch (bindings.get(.b).?.*) {
+                .number => |number| try (Expression(T){ .number = number }).clone(allocator),
+                .unary => |unary| try unary.operand.clone(allocator),
+                else => unreachable,
+            };
 
             const solution = try Solution(T).init(1, allocator);
             solution.steps[0] = try (Step(T){
                 .before = try expression.clone(allocator),
                 .after = try (Expression(T){
                     .binary = .{
-                        .left = try a.clone(allocator),
-                        .right = try b.clone(allocator),
+                        .left = a,
+                        .right = b,
                         .operation = .division,
                     },
                 }).clone(allocator),

@@ -5,7 +5,7 @@ const corundum = @import("corundum");
 const expr = corundum.expr;
 const template = corundum.template;
 
-const ITERATIONS = if (builtin.mode == .Debug) 10000 else 100000;
+const ITERATIONS = (if (builtin.mode == .Debug) 10000 else 100000);
 const total_runs = blk: {
     @setEvalBranchQuota((1 << 32) - 1);
     var result: usize = 0;
@@ -31,9 +31,7 @@ fn run(
     name: []const u8,
     progress: *std.Progress.Node,
     allocator: std.mem.Allocator,
-    data: *[total_runs]Data,
-    idx: usize,
-) !void {
+) !Data {
     const t = template.Templates.get(kind);
 
     const this = progress.start(if (@typeInfo(@TypeOf(t)) == .@"struct") switch (t.module(T)) {
@@ -43,7 +41,13 @@ fn run(
     } else t(T).name, ITERATIONS);
 
     var times: [ITERATIONS]u64 = undefined;
+
     for (0..ITERATIONS) |i| {
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+
+        const gpa = arena.allocator();
+
         var timer = try std.time.Timer.start();
 
         const structural = input.structural();
@@ -52,20 +56,22 @@ fn run(
         if (@typeInfo(@TypeOf(t)) == .@"struct") {
             switch (t.module(T)) {
                 .dynamic => |dynamic| {
-                    const bindings = if (@typeInfo(@TypeOf(dynamic.matches)).@"fn".params.len == 2) dynamic.matches(input, allocator) else dynamic.matches(input);
+                    const bindings = if (@typeInfo(@TypeOf(dynamic.matches)).@"fn".params.len == 2) dynamic.matches(input, gpa) else dynamic.matches(input);
 
                     if (bindings) |b| {
-                        const solution = try dynamic.solve(input, b, allocator);
+                        const solution = try dynamic.solve(input, b, gpa);
                         std.mem.doNotOptimizeAway(solution.steps);
-                        defer solution.deinit(allocator);
+                        solution.deinit(gpa);
+
+                        if (@typeInfo(@TypeOf(dynamic.matches)).@"fn".params.len == 2) gpa.free(b);
                     } else |_| {}
                 },
                 .structure => |structure| {
                     if (structural == comptime structure.ast.structural()) {
                         if (structure.matches(input)) |bindings| {
-                            const solution = try structure.solve(input, bindings, allocator);
+                            const solution = try structure.solve(input, bindings, gpa);
                             std.mem.doNotOptimizeAway(solution.steps);
-                            defer solution.deinit(allocator);
+                            solution.deinit(gpa);
                         } else |_| {}
                     }
                 },
@@ -78,9 +84,9 @@ fn run(
             }
         } else {
             if (t(T).matches(input)) |bindings| {
-                const solution = try t(T).solve(input, bindings, allocator);
+                const solution = try t(T).solve(input, bindings, gpa);
                 std.mem.doNotOptimizeAway(solution.steps);
-                defer solution.deinit(allocator);
+                solution.deinit(gpa);
             } else |_| {}
         }
 
@@ -112,7 +118,7 @@ fn run(
     const variance = variance_sum / ITERATIONS;
     const std_deviation = @sqrt(variance);
 
-    data[idx] = Data{ .average = average, .mean = mean, .std_dev = std_deviation, .name = try std.mem.join(allocator, "", &.{ "\x1b[1m" ++ @tagName(kind) ++ "\x1b[0m [", name, "]" }) };
+    return Data{ .average = average, .mean = mean, .std_dev = std_deviation, .name = try std.mem.join(allocator, "", &.{ "\x1b[1m" ++ @tagName(kind) ++ "\x1b[0m [", name, "]" }) };
 }
 
 pub fn main() !void {
@@ -128,11 +134,6 @@ pub fn main() !void {
         _ = debug_allocator.deinit();
     };
 
-    var arena = std.heap.ArenaAllocator.init(gpa);
-    defer arena.deinit();
-
-    const allocator = arena.allocator();
-
     var data: [total_runs]Data = undefined;
     var idx: usize = 0;
 
@@ -145,15 +146,13 @@ pub fn main() !void {
             const testing_data = template.Templates.tests(kind, f64);
 
             for (testing_data.keys()) |key| {
-                try run(
+                data[idx] = try run(
                     f64,
                     kind,
                     testing_data.get(key).?,
                     key,
                     &progress,
-                    allocator,
-                    &data,
-                    idx,
+                    gpa,
                 );
 
                 idx += 1;
@@ -165,15 +164,17 @@ pub fn main() !void {
         std.debug.print("{s}: {d:.2} μs ± {d:.2} μs\n", .{ entry.name, entry.mean / 1000, entry.std_dev / 1000 });
     }
 
+    progress.end();
+
     const file = try std.fs.cwd().openFile("zig-out/wasm/corundum.wasm", .{});
 
-    const contents = try file.readToEndAlloc(allocator, (1 << 32) - 1);
+    const contents = try file.readToEndAlloc(gpa, (1 << 32) - 1);
     var reader = std.io.fixedBufferStream(contents);
-    defer allocator.free(contents);
+    defer gpa.free(contents);
 
     std.debug.print("Uncompressed size: {d} bytes\n", .{contents.len});
 
-    var output = std.ArrayList(u8).init(allocator);
+    var output = std.ArrayList(u8).init(gpa);
     defer output.deinit();
 
     try std.compress.gzip.compress(reader.reader(), output.writer(), .{ .level = .best });

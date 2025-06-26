@@ -219,10 +219,13 @@ pub fn build(b: *std.Build) !void {
             .optimize = optimize,
         });
         exe.root_module.addImport("corundum", root);
-        b.installArtifact(exe);
+        const exe_file = b.addInstallArtifact(exe, .{
+            .dest_dir = .default,
+        });
 
-        const run_exe = b.addRunArtifact(exe);
+        const run_exe = b.addRunArtifact(exe_file.artifact);
         run_exe.step.dependOn(b.getInstallStep());
+        run_exe.step.dependOn(&exe_file.step);
 
         if (b.args) |args| run_exe.addArgs(args);
 
@@ -240,7 +243,7 @@ pub fn build(b: *std.Build) !void {
             .cpu_arch = .wasm32,
         }),
         .optimize = optimize,
-        .strip = optimize != .Debug,
+        .strip = optimize == .ReleaseSmall,
         .error_tracing = optimize == .Debug,
     });
 
