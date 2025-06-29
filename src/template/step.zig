@@ -8,9 +8,24 @@ pub fn Step(comptime T: type) type {
         const Self = @This();
 
         before: *const Expression(T),
-        after: ?*const Expression(T),
+        after: *const Expression(T),
         description: []const u8,
         substeps: []*const Self,
+
+        pub fn init(
+            before: *const Expression(T),
+            after: *const Expression(T),
+            description: []const u8,
+            substeps: []*const Self,
+            allocator: std.mem.Allocator,
+        ) !*const Self {
+            return clone(Self{
+                .before = before,
+                .after = after,
+                .description = description,
+                .substeps = substeps,
+            }, allocator);
+        }
 
         pub fn clone(self: Self, allocator: std.mem.Allocator) !*const Self {
             const result = try allocator.create(Self);
@@ -21,7 +36,7 @@ pub fn Step(comptime T: type) type {
 
         pub fn deinit(self: *const Self, allocator: std.mem.Allocator) void {
             self.before.deinit(allocator);
-            if (self.after) |after| after.deinit(allocator);
+            self.after.deinit(allocator);
 
             allocator.free(self.description);
 

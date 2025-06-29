@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
             "10 % 4", &Expression(T){ .binary = .{
@@ -28,7 +28,7 @@ pub fn modulus(comptime T: type) Template(Key, T) {
             const a = bindings.get(.a).?;
             const b = bindings.get(.b).?;
 
-            const solution = try Solution(T).init(2, allocator);
+            const solution = try Solution(T).init(2, true, allocator);
 
             const divFloor = template.Templates.get(.@"builtin/functions/divFloor");
             const multiplier = try divFloor.module(T).structure.solve(&.{ .function = .{
@@ -40,24 +40,25 @@ pub fn modulus(comptime T: type) Template(Key, T) {
                 .b = b,
             }), allocator);
 
-            solution.steps[0] = try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try (Expression(T){ .number = b.number * multiplier.steps[multiplier.steps.len - 1].after.?.number }).clone(allocator),
-                .description = try allocator.dupe(u8, "Calculate the whole part"),
-                .substeps = multiplier.steps,
-            }).clone(allocator);
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try (Expression(T){ .number = b.number * multiplier.steps[multiplier.steps.len - 1].after.number }).clone(allocator),
+                try allocator.dupe(u8, "Calculate the whole part"),
+                multiplier.steps,
+                allocator,
+            );
 
             // TODO extract the "negative" case into a different variant, and handle this subtraction accordingly (+1 step, or simply have it as a substep)
             const subtraction = template.Templates.get(.@"core/number/subtraction");
             const result = try subtraction.module(T).structure.solve(&.{
                 .binary = .{
                     .left = a,
-                    .right = solution.steps[0].after.?,
+                    .right = solution.steps[0].after,
                     .operation = .subtraction,
                 },
             }, Bindings(subtraction.key, T).init(.{
                 .a = a,
-                .b = solution.steps[0].after.?,
+                .b = solution.steps[0].after,
             }), allocator);
 
             solution.steps[1] = result.steps[0];
@@ -86,13 +87,14 @@ test modulus {
     inline for (.{ f32, f64, f128 }) |T| {
         const Modulus = modulus(T);
 
-        const ten_mod_four = TestingData(T).get("10 % 4").?;
+        const ten_mod_four = testingData(T).get("10 % 4").?;
 
         const bindings = try Modulus.structure.matches(ten_mod_four);
         const solution = try Modulus.structure.solve(ten_mod_four, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
+            .is_final = true,
             .steps = @constCast(&[_]*const Step(T){
                 &.{
                     .before = ten_mod_four,

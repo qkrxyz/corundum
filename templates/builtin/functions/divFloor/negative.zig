@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
             "9 / -5", &Expression(T){ .function = .{
@@ -55,21 +55,23 @@ pub fn negative(comptime T: type) Variant(Key, T) {
                 }),
                 allocator,
             );
-            defer allocator.free(division.steps);
 
-            const last = division.steps[division.steps.len - 1].after.?;
+            const last = division.steps[division.steps.len - 1].after;
             const x = last.number;
             const remainder = (x + 1) * b - a;
 
-            const solution = try Solution(T).init(division.steps.len + 1, allocator);
-            @memcpy(solution.steps[0..division.steps.len], division.steps);
+            const solution = try Solution(T).init(division.steps.len + 1, true, allocator);
 
-            solution.steps[solution.steps.len - 1] = try (Step(T){
-                .before = try last.clone(allocator),
-                .after = try (Expression(T){ .number = -last.number - 1 }).clone(allocator),
-                .description = try std.fmt.allocPrint(allocator, "Since our original input contained negative numbers, we also have to change the sign of our result and also subtract one.\n\nThis is because $-{d} \\times {d} + {d}$ (the remainder) $= -{d} + {d} = -{d}$", .{ x + 1, b, remainder, (x + 1) * b, remainder, a }),
-                .substeps = &.{},
-            }).clone(allocator);
+            @memcpy(solution.steps[0..division.steps.len], division.steps);
+            defer allocator.free(division.steps);
+
+            solution.steps[solution.steps.len - 1] = try Step(T).init(
+                try last.clone(allocator),
+                try Expression(T).init(.{ .number = -last.number - 1 }, allocator),
+                try std.fmt.allocPrint(allocator, "Since our original input contained negative numbers, we also have to change the sign of our result and also subtract one.\n\nThis is because $-{d} \\times {d} + {d}$ (the remainder) $= -{d} + {d} = -{d}$", .{ x + 1, b, remainder, (x + 1) * b, remainder, a }),
+                &.{},
+                allocator,
+            );
 
             return solution;
         }
@@ -89,13 +91,14 @@ test negative {
     inline for (.{ f32, f64, f128 }) |T| {
         const Division = negative(T);
 
-        const nine_div_minus_five = TestingData(T).get("9 / -5").?;
+        const nine_div_minus_five = testingData(T).get("9 / -5").?;
 
         const bindings = try Division.matches(nine_div_minus_five);
         const solution = try Division.solve(nine_div_minus_five, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
+            .is_final = true,
             .steps = @constCast(&[_]*const Step(T){
                 &.{
                     .before = &.{ .number = 1.0 },

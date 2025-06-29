@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
             "1", &Expression(T){ .number = 1.0 },
@@ -20,14 +20,14 @@ pub fn number(comptime T: type) Template(Key, T) {
 
         // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            const solution = try Solution(T).init(1, allocator);
-
-            solution.steps[0] = try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try expression.clone(allocator),
-                .description = try std.fmt.allocPrint(allocator, "{d} is a number.", .{bindings.get(Key.x).?.number}),
-                .substeps = &.{},
-            }).clone(allocator);
+            const solution = try Solution(T).init(1, true, allocator);
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try expression.clone(allocator),
+                try std.fmt.allocPrint(allocator, "{d} is a number.", .{bindings.get(.x).?.number}),
+                &.{},
+                allocator,
+            );
 
             return solution;
         }
@@ -48,7 +48,7 @@ pub fn number(comptime T: type) Template(Key, T) {
 // MARK: tests
 test number {
     const Number = number(f64);
-    const one = TestingData(f64).get("1").?;
+    const one = testingData(f64).get("1").?;
 
     try testing.expect(Number.structure.ast.structural() == one.structural());
 }
@@ -56,7 +56,7 @@ test number {
 test "number(T).matches" {
     const Number = number(f64);
 
-    const one = TestingData(f64).kvs.values[0];
+    const one = testingData(f64).kvs.values[0];
 
     const bindings = try Number.structure.matches(one);
     try testing.expectEqual(bindings.get(.x), one);
@@ -65,7 +65,7 @@ test "number(T).matches" {
 test "number(T).solve" {
     const Number = number(f64);
 
-    const one = TestingData(f64).get("1").?;
+    const one = testingData(f64).get("1").?;
 
     const bindings = try Number.structure.matches(one);
 
@@ -73,6 +73,7 @@ test "number(T).solve" {
     defer solution.deinit(testing.allocator);
 
     const expected: Solution(f64) = Solution(f64){
+        .is_final = true,
         .steps = @constCast(&[_]*const Step(f64){
             &.{
                 .before = &.{ .number = 1.0 },

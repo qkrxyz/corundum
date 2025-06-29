@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
             "1 + 2", &Expression(T){ .binary = .{
@@ -50,20 +50,21 @@ pub fn addition(comptime T: type) Template(Key, T) {
 
             // ±a + b
             if (b > 0.0) {
-                const solution = try Solution(T).init(1, allocator);
-                solution.steps[0] = try (Step(T){
-                    .before = try expression.clone(allocator),
-                    .after = try (Expression(T){ .number = a + b }).clone(allocator),
-                    .description = try std.fmt.allocPrint(allocator, "Add {d} and {d} together", .{ a, b }),
-                    .substeps = try allocator.alloc(*const Step(T), 0),
-                }).clone(allocator);
+                const solution = try Solution(T).init(1, true, allocator);
+                solution.steps[0] = try Step(T).init(
+                    try expression.clone(allocator),
+                    try (Expression(T){ .number = a + b }).clone(allocator),
+                    try std.fmt.allocPrint(allocator, "Add {d} and {d} together", .{ a, b }),
+                    try allocator.alloc(*const Step(T), 0),
+                    allocator,
+                );
 
                 return solution;
             }
 
             // ±a + (-b) = ±a - b
             const subtraction = template.Templates.get(.@"core/number/subtraction");
-            const solution = try Solution(T).init(2, allocator);
+            const solution = try Solution(T).init(2, true, allocator);
 
             const new_bindings = Bindings(subtraction.key, T).init(.{
                 .a = &Expression(T){ .number = a },
@@ -71,21 +72,22 @@ pub fn addition(comptime T: type) Template(Key, T) {
             });
 
             // change the sign
-            solution.steps[0] = try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try (Expression(T){
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try (Expression(T){
                     .binary = .{
                         .left = new_bindings.get(.a).?,
                         .operation = .subtraction,
                         .right = new_bindings.get(.b).?,
                     },
                 }).clone(allocator),
-                .description = try allocator.dupe(u8, "Change the sign"),
-                .substeps = try allocator.alloc(*const Step(T), 0),
-            }).clone(allocator);
+                try allocator.dupe(u8, "Change the sign"),
+                try allocator.alloc(*const Step(T), 0),
+                allocator,
+            );
 
             // subtract
-            const subtraction_result = try subtraction.module(T).structure.solve(solution.steps[0].after.?, new_bindings, allocator);
+            const subtraction_result = try subtraction.module(T).structure.solve(solution.steps[0].after, new_bindings, allocator);
             defer allocator.free(subtraction_result.steps);
 
             solution.steps[1] = subtraction_result.steps[0];
@@ -127,8 +129,8 @@ test addition {
 test "addition(T).matches" {
     const Addition = addition(f64);
 
-    const one_plus_two = TestingData(f64).get("1 + 2").?;
-    const three_plus_minus_two = TestingData(f64).get("3 + (-2)").?;
+    const one_plus_two = testingData(f64).get("1 + 2").?;
+    const three_plus_minus_two = testingData(f64).get("3 + (-2)").?;
 
     var bindings = try Addition.structure.matches(one_plus_two);
     try testing.expectEqualDeep(bindings.get(.a), one_plus_two.binary.left);
@@ -142,13 +144,14 @@ test "addition(T).matches" {
 test "addition(T).solve" {
     const Addition = addition(f64);
 
-    const one_plus_two = TestingData(f64).get("1 + 2").?;
+    const one_plus_two = testingData(f64).get("1 + 2").?;
 
     const bindings = try Addition.structure.matches(one_plus_two);
     const solution = try Addition.structure.solve(one_plus_two, bindings, testing.allocator);
     defer solution.deinit(testing.allocator);
 
     const expected = Solution(f64){
+        .is_final = true,
         .steps = @constCast(&[_]*const Step(f64){
             &.{
                 .before = one_plus_two,
@@ -165,7 +168,7 @@ test "addition(T).solve" {
 test "addition(T).solve - `±a + (-b)`" {
     const Addition = addition(f64);
 
-    const three_plus_minus_two = TestingData(f64).get("3 + (-2)").?;
+    const three_plus_minus_two = testingData(f64).get("3 + (-2)").?;
 
     const three_minus_two = Expression(f64){ .binary = .{
         .operation = .subtraction,
@@ -178,6 +181,7 @@ test "addition(T).solve - `±a + (-b)`" {
     defer solution.deinit(testing.allocator);
 
     const expected = Solution(f64){
+        .is_final = true,
         .steps = @constCast(&[_]*const Step(f64){
             &.{
                 .before = three_plus_minus_two,

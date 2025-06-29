@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
             "9 / 9", &Expression(T){
@@ -36,13 +36,14 @@ pub fn @"a eq b"(comptime T: type) Variant(Key, T) {
             const a = bindings.get(.a).?.number;
             const b = bindings.get(.b).?.number;
 
-            const solution = try Solution(T).init(1, allocator);
-            solution.steps[0] = try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try (Expression(T){ .number = 1.0 }).clone(allocator),
-                .description = try std.fmt.allocPrint(allocator, "Since {d} is equal to {d}, the result is 1.", .{ a, b }),
-                .substeps = &.{},
-            }).clone(allocator);
+            const solution = try Solution(T).init(1, true, allocator);
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try Expression(T).init(.{ .number = 1.0 }, allocator),
+                try std.fmt.allocPrint(allocator, "Since {d} is equal to {d}, the result is 1.", .{ a, b }),
+                &.{},
+                allocator,
+            );
 
             return solution;
         }
@@ -62,13 +63,14 @@ test @"a eq b" {
     inline for (.{ f16, f32, f64, f128 }) |T| {
         const Division = @"a eq b"(T);
 
-        const nine = TestingData(T).get("9 / 9").?;
+        const nine = testingData(T).get("9 / 9").?;
 
         const bindings = try Division.matches(nine);
         const solution = try Division.solve(nine, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
+            .is_final = true,
             .steps = @constCast(&[_]*const Step(T){
                 &.{
                     .before = nine,

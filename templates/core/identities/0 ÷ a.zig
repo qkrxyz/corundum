@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
             "0 / x",
@@ -31,14 +31,14 @@ pub fn @"0 ÷ a"(comptime T: type) Template(Key, T) {
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             _ = bindings;
 
-            const solution = try Solution(T).init(1, allocator);
-
-            solution.steps[0] = try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try (Expression(T){ .number = 0.0 }).clone(allocator),
-                .description = try allocator.dupe(u8, "0 divided by anything is equal to 0"),
-                .substeps = try allocator.alloc(*const Step(T), 0),
-            }).clone(allocator);
+            const solution = try Solution(T).init(1, true, allocator);
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try Expression(T).init(.{ .number = 0.0 }, allocator),
+                try allocator.dupe(u8, "0 divided by anything is equal to 0"),
+                &.{},
+                allocator,
+            );
 
             return solution;
         }
@@ -94,13 +94,14 @@ test "0 ÷ a(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Division = @"0 ÷ a"(T);
 
-        const zero_div_x = TestingData(T).get("0 / x").?;
+        const zero_div_x = testingData(T).get("0 / x").?;
 
         const bindings = try Division.dynamic.matches(zero_div_x);
         const solution = try Division.dynamic.solve(zero_div_x, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
+            .is_final = true,
             .steps = @constCast(&[_]*const Step(T){
                 &.{
                     .before = zero_div_x,

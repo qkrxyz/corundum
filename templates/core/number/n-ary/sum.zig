@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
             "1 + 3 + 2", &Expression(T){ .function = .{
@@ -36,7 +36,7 @@ pub fn sum(comptime T: type) Template(Key, T) {
         // MARK: .solve()
         // TODO call @"core/number/addition" so that the identities are handled correctly
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            var steps = try std.ArrayList(*const Step(T)).initCapacity(allocator, bindings.len - 1);
+            const solution = try Solution(T).init(bindings.len - 1, true, allocator);
 
             const initial_args = blk: {
                 var arguments = try std.ArrayList(*const Expression(T)).initCapacity(allocator, 2);
@@ -48,30 +48,32 @@ pub fn sum(comptime T: type) Template(Key, T) {
             };
             defer allocator.free(initial_args);
 
-            try steps.append(try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try (Expression(T){ .function = .{
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try (Expression(T){ .function = .{
                     .name = "add",
                     .arguments = initial_args,
                     .body = null,
                 } }).clone(allocator),
-                .description = try std.fmt.allocPrint(allocator, "Add {d} and {d} together", .{ bindings[0].number, bindings[1].number }),
-                .substeps = &.{},
-            }).clone(allocator));
+                try std.fmt.allocPrint(allocator, "Add {d} and {d} together", .{ bindings[0].number, bindings[1].number }),
+                &.{},
+                allocator,
+            );
 
-            if (bindings.len == 2) return Solution(T){ .steps = try steps.toOwnedSlice() };
+            if (bindings.len == 2) return solution;
 
             for (bindings[2..], 2..) |x, i| {
-                const last = steps.getLast();
-                const result = last.after.?.function.arguments[0].number + x.number;
+                const last = solution.steps[i - 2];
+                const result = last.after.function.arguments[0].number + x.number;
 
                 if (i == bindings.len - 1) {
-                    try steps.append(try (Step(T){
-                        .before = try last.after.?.clone(allocator),
-                        .after = try (Expression(T){ .number = result }).clone(allocator),
-                        .description = try std.fmt.allocPrint(allocator, "Add {d} and {d} together", .{ last.after.?.function.arguments[0].number, x.number }),
-                        .substeps = &.{},
-                    }).clone(allocator));
+                    solution.steps[i - 1] = try Step(T).init(
+                        try last.after.clone(allocator),
+                        try (Expression(T){ .number = result }).clone(allocator),
+                        try std.fmt.allocPrint(allocator, "Add {d} and {d} together", .{ last.after.function.arguments[0].number, x.number }),
+                        &.{},
+                        allocator,
+                    );
 
                     break;
                 }
@@ -86,19 +88,20 @@ pub fn sum(comptime T: type) Template(Key, T) {
                 };
                 defer allocator.free(new_args);
 
-                try steps.append(try (Step(T){
-                    .before = try last.after.?.clone(allocator),
-                    .after = try (Expression(T){ .function = .{
+                solution.steps[i - 1] = try Step(T).init(
+                    try last.after.clone(allocator),
+                    try (Expression(T){ .function = .{
                         .name = "add",
                         .arguments = new_args,
                         .body = null,
                     } }).clone(allocator),
-                    .description = try std.fmt.allocPrint(allocator, "Add {d} and {d} together", .{ last.after.?.function.arguments[0].number, x.number }),
-                    .substeps = &.{},
-                }).clone(allocator));
+                    try std.fmt.allocPrint(allocator, "Add {d} and {d} together", .{ last.after.function.arguments[0].number, x.number }),
+                    &.{},
+                    allocator,
+                );
             }
 
-            return Solution(T){ .steps = try steps.toOwnedSlice() };
+            return solution;
         }
     };
 
@@ -116,7 +119,7 @@ test sum {
     inline for (.{ f32, f64, f128 }) |T| {
         const Addition = sum(T);
 
-        const one_three_two = TestingData(T).kvs.values[0];
+        const one_three_two = testingData(T).kvs.values[0];
 
         const bindings = try Addition.dynamic.matches(one_three_two, testing.allocator);
         defer testing.allocator.free(bindings);
@@ -135,7 +138,7 @@ test "sum(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Addition = sum(T);
 
-        const one_three_two = TestingData(T).get("1 + 3 + 2").?;
+        const one_three_two = testingData(T).get("1 + 3 + 2").?;
 
         const bindings = try Addition.dynamic.matches(one_three_two, testing.allocator);
         defer testing.allocator.free(bindings);
@@ -143,42 +146,45 @@ test "sum(T).solve" {
         const solution = try Addition.dynamic.solve(one_three_two, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
-        const expected = Solution(T){ .steps = @constCast(&[_]*const Step(T){
-            &.{
-                .before = &.{ .function = .{
-                    .name = "add",
-                    .arguments = @constCast(&[_]*const Expression(T){
-                        &.{ .number = 1.0 },
-                        &.{ .number = 3.0 },
-                        &.{ .number = 2.0 },
-                    }),
-                    .body = null,
-                } },
-                .after = &.{ .function = .{
-                    .name = "add",
-                    .arguments = @constCast(&[_]*const Expression(T){
-                        &.{ .number = 4.0 },
-                        &.{ .number = 2.0 },
-                    }),
-                    .body = null,
-                } },
-                .description = "Add 1 and 3 together",
-                .substeps = &.{},
-            },
-            &.{
-                .before = &.{ .function = .{
-                    .name = "add",
-                    .arguments = @constCast(&[_]*const Expression(T){
-                        &.{ .number = 4.0 },
-                        &.{ .number = 2.0 },
-                    }),
-                    .body = null,
-                } },
-                .after = &.{ .number = 6.0 },
-                .description = "Add 4 and 2 together",
-                .substeps = &.{},
-            },
-        }) };
+        const expected = Solution(T){
+            .is_final = true,
+            .steps = @constCast(&[_]*const Step(T){
+                &.{
+                    .before = &.{ .function = .{
+                        .name = "add",
+                        .arguments = @constCast(&[_]*const Expression(T){
+                            &.{ .number = 1.0 },
+                            &.{ .number = 3.0 },
+                            &.{ .number = 2.0 },
+                        }),
+                        .body = null,
+                    } },
+                    .after = &.{ .function = .{
+                        .name = "add",
+                        .arguments = @constCast(&[_]*const Expression(T){
+                            &.{ .number = 4.0 },
+                            &.{ .number = 2.0 },
+                        }),
+                        .body = null,
+                    } },
+                    .description = "Add 1 and 3 together",
+                    .substeps = &.{},
+                },
+                &.{
+                    .before = &.{ .function = .{
+                        .name = "add",
+                        .arguments = @constCast(&[_]*const Expression(T){
+                            &.{ .number = 4.0 },
+                            &.{ .number = 2.0 },
+                        }),
+                        .body = null,
+                    } },
+                    .after = &.{ .number = 6.0 },
+                    .description = "Add 4 and 2 together",
+                    .substeps = &.{},
+                },
+            }),
+        };
 
         try testing.expectEqualDeep(expected, solution);
     }

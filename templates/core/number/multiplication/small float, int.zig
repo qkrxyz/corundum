@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
             "0.5 * 3.0", &Expression(T){ .binary = .{
@@ -46,7 +46,8 @@ pub fn @"small float, int"(comptime T: type) Variant(Key, T) {
             const I = @Type(.{ .int = .{ .bits = @bitSizeOf(T), .signedness = .unsigned } });
 
             const a, const b = .{ bindings.get(.a).?.number, bindings.get(.b).?.number };
-            var steps = try std.ArrayList(*const Step(T)).initCapacity(allocator, 2);
+
+            const solution = try Solution(T).init(2, true, allocator);
 
             // MARK: reinterpret d as integer; multiply
             const a_str = try std.fmt.allocPrint(allocator, "{d}", .{a});
@@ -55,13 +56,13 @@ pub fn @"small float, int"(comptime T: type) Variant(Key, T) {
             const a_int = try std.fmt.parseFloat(T, a_str[2..]);
             const multiplied = a_int * b;
 
-            try steps.append(try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try (Expression(T){ .number = multiplied }).clone(allocator),
-
-                .description = try std.fmt.allocPrint(allocator, "Multiply the fractional part of {d} (as if it was an integer - {d}) with {d}", .{ a, a_int, b }),
-                .substeps = try allocator.alloc(*const Step(T), 0),
-            }).clone(allocator));
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try Expression(T).init(.{ .number = multiplied }, allocator),
+                try std.fmt.allocPrint(allocator, "Multiply the fractional part of {d} (as if it was an integer - {d}) with {d}", .{ a, a_int, b }),
+                &.{},
+                allocator,
+            );
 
             // MARK: shift
             const b_len = b_len_blk: {
@@ -74,18 +75,17 @@ pub fn @"small float, int"(comptime T: type) Variant(Key, T) {
             };
             const shift: I = @intCast(b_len + a_str[2..].len);
 
-            try steps.append(try (Step(T){
-                .before = try steps.items[0].after.?.clone(allocator),
-                .after = try (Expression(T){
+            solution.steps[1] = try Step(T).init(
+                try solution.steps[0].after.clone(allocator),
+                try (Expression(T){
                     .number = multiplied / @as(T, @floatFromInt(try std.math.powi(I, 10, shift - 1))),
                 }).clone(allocator),
-                .description = try std.fmt.allocPrint(allocator, "Move the decimal point left by {d} place(-s)", .{shift - 1}),
-                .substeps = try allocator.alloc(*const Step(T), 0),
-            }).clone(allocator));
+                try std.fmt.allocPrint(allocator, "Move the decimal point left by {d} place(-s)", .{shift - 1}),
+                try allocator.alloc(*const Step(T), 0),
+                allocator,
+            );
 
-            return Solution(T){
-                .steps = try steps.toOwnedSlice(),
-            };
+            return solution;
         }
     };
 
@@ -139,13 +139,14 @@ test "small float, int(T).matches" {
 test "small float, int(T).solve" {
     const Multiplication = @"small float, int"(f64);
 
-    const half_of_three = TestingData(f64).get("0.5 * 3.0").?;
+    const half_of_three = testingData(f64).get("0.5 * 3.0").?;
 
     const bindings = try Multiplication.matches(half_of_three);
     const solution = try Multiplication.solve(half_of_three, bindings, testing.allocator);
     defer solution.deinit(testing.allocator);
 
     const expected = Solution(f64){
+        .is_final = true,
         .steps = @constCast(&[_]*const Step(f64){
             // step 1: reinterpret; multiply
             &.{

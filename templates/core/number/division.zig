@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
             "10 / 4", &Expression(T){
@@ -62,7 +62,7 @@ pub fn division(comptime T: type) Template(Key, T) {
             const a: I = @intFromFloat(bindings.get(.a).?.number);
             const b: I = @intFromFloat(bindings.get(.b).?.number);
 
-            var steps = try std.ArrayList(*const Step(T)).initCapacity(allocator, 3);
+            const solution = try Solution(T).init(3, true, allocator);
 
             // MARK: integer part
             const divFloor = template.Templates.get(.@"builtin/functions/divFloor");
@@ -80,21 +80,22 @@ pub fn division(comptime T: type) Template(Key, T) {
                 .body = null,
             } };
 
-            const solution = try divFloor.module(T).structure.solve(&div_floor_expression, new_bindings, allocator);
+            const div_floor_solution = try divFloor.module(T).structure.solve(&div_floor_expression, new_bindings, allocator);
 
-            try steps.append(try (Step(T){
-                .before = try div_floor_expression.clone(allocator),
-                .after = try solution.steps[solution.steps.len - 1].after.?.clone(allocator),
-                .description = try std.fmt.allocPrint(allocator, "Figure out how many times {d} fits in {d}", .{ b, a }),
-                .substeps = solution.steps,
-            }).clone(allocator));
+            solution.steps[0] = try Step(T).init(
+                try div_floor_expression.clone(allocator),
+                try div_floor_solution.steps[div_floor_solution.steps.len - 1].after.clone(allocator),
+                try std.fmt.allocPrint(allocator, "Figure out how many times {d} fits in {d}", .{ b, a }),
+                div_floor_solution.steps,
+                allocator,
+            );
 
             // MARK: remainder
-            var remainder: I = @intCast(@abs(a - (@as(I, @intFromFloat(steps.getLast().after.?.number)) * b)));
+            var remainder: I = @intCast(@abs(a - (@as(I, @intFromFloat(solution.steps[0].after.number)) * b)));
             const b_abs: I = @intCast(@abs(b));
 
-            try steps.append(try (Step(T){
-                .before = try (Expression(T){
+            solution.steps[1] = try Step(T).init(
+                try (Expression(T){
                     .function = .{
                         .name = "abs",
                         .arguments = @constCast(&[_]*const Expression(T){
@@ -103,13 +104,11 @@ pub fn division(comptime T: type) Template(Key, T) {
                                     .name = "sub",
                                     .arguments = @constCast(&[_]*const Expression(T){
                                         bindings.get(.a).?,
-                                        &.{
-                                            .binary = .{
-                                                .left = &.{ .number = steps.getLast().after.?.number },
-                                                .right = bindings.get(.b).?,
-                                                .operation = .multiplication,
-                                            },
-                                        },
+                                        &.{ .binary = .{
+                                            .left = &.{ .number = solution.steps[0].after.number },
+                                            .right = bindings.get(.b).?,
+                                            .operation = .multiplication,
+                                        } },
                                     }),
                                     .body = null,
                                 },
@@ -118,10 +117,11 @@ pub fn division(comptime T: type) Template(Key, T) {
                         .body = null,
                     },
                 }).clone(allocator),
-                .after = try (Expression(T){ .number = @floatFromInt(remainder) }).clone(allocator),
-                .description = try allocator.dupe(u8, "Calculate the remainder"),
-                .substeps = &.{},
-            }).clone(allocator));
+                try (Expression(T){ .number = @floatFromInt(remainder) }).clone(allocator),
+                try allocator.dupe(u8, "Calculate the remainder"),
+                &.{},
+                allocator,
+            );
 
             // MARK: decimal part
             const upper_bound: usize = comptime @intFromFloat(@ceil(std.math.floatMantissaBits(T) * @log10(2.0)));
@@ -150,12 +150,14 @@ pub fn division(comptime T: type) Template(Key, T) {
                     remainder *= 10;
                     trailing_zeroes += 1;
 
-                    try trailing_steps.append(try (Step(T){
-                        .before = try (Expression(T){ .number = @floatFromInt(@divExact(remainder, 10)) }).clone(allocator),
-                        .after = try (Expression(T){ .number = @floatFromInt(remainder) }).clone(allocator),
-                        .description = try std.fmt.allocPrint(allocator, "Since {d} is smaller than {d}, multiply the remainder by 10 and add shift the decimal of the result of this step by {d} place(-s)", .{ @divExact(remainder, 10), b_abs, trailing_zeroes }),
-                        .substeps = &.{},
-                    }).clone(allocator));
+                    const step = try Step(T).init(
+                        try (Expression(T){ .number = @floatFromInt(@divExact(remainder, 10)) }).clone(allocator),
+                        try (Expression(T){ .number = @floatFromInt(remainder) }).clone(allocator),
+                        try std.fmt.allocPrint(allocator, "Since {d} is smaller than {d}, multiply the remainder by 10 and add shift the decimal of the result of this step by {d} place(-s)", .{ @divExact(remainder, 10), b_abs, trailing_zeroes }),
+                        &.{},
+                        allocator,
+                    );
+                    try trailing_steps.append(step);
                 }
 
                 // digit
@@ -178,30 +180,33 @@ pub fn division(comptime T: type) Template(Key, T) {
                     }),
                     allocator,
                 );
-                defer allocator.free(digit_solution.steps);
 
                 const b_float: T = @floatFromInt(b_abs);
                 const remainder_float: T = @floatFromInt(remainder);
 
-                var trailing_substeps = try std.ArrayList(*const Step(T)).initCapacity(allocator, digit_solution.steps.len + 1);
-                try trailing_substeps.appendSlice(digit_solution.steps);
-                try trailing_substeps.append(try (Step(T){
-                    .before = try (Expression(T){ .binary = .{
+                var trailing_substeps = try allocator.alloc(*const Step(T), digit_solution.steps.len + 1);
+
+                @memcpy(trailing_substeps[0..digit_solution.steps.len], digit_solution.steps);
+                defer allocator.free(digit_solution.steps);
+
+                trailing_substeps[trailing_substeps.len - 1] = try Step(T).init(
+                    try (Expression(T){ .binary = .{
                         .left = &.{ .number = remainder_float },
                         .right = &.{ .binary = .{
                             .left = &.{ .number = b_float },
-                            .right = digit_solution.steps[digit_solution.steps.len - 1].after.?,
+                            .right = digit_solution.steps[digit_solution.steps.len - 1].after,
                             .operation = .multiplication,
                         } },
                         .operation = .subtraction,
                     } }).clone(allocator),
-                    .after = try (Expression(T){ .number = @floatFromInt(@mod(remainder, b_abs)) }).clone(allocator),
-                    .description = try std.fmt.allocPrint(allocator, "Subtract {d} from {d}", .{ b_float * digit_solution.steps[digit_solution.steps.len - 1].after.?.number, remainder }),
-                    .substeps = &.{},
-                }).clone(allocator));
+                    try (Expression(T){ .number = @floatFromInt(@mod(remainder, b_abs)) }).clone(allocator),
+                    try std.fmt.allocPrint(allocator, "Subtract {d} from {d}", .{ b_float * digit_solution.steps[digit_solution.steps.len - 1].after.number, remainder }),
+                    &.{},
+                    allocator,
+                );
 
-                try trailing_steps.append(try (Step(T){
-                    .before = try (Expression(T){
+                try trailing_steps.append(try Step(T).init(
+                    try (Expression(T){
                         .binary = .{
                             .left = &.{
                                 .function = .{
@@ -221,45 +226,42 @@ pub fn division(comptime T: type) Template(Key, T) {
                             .operation = .addition,
                         },
                     }).clone(allocator),
-                    .after = try (Expression(T){ .binary = .{
+                    try (Expression(T){ .binary = .{
                         .left = &.{ .number = @floatFromInt(@divFloor(remainder, b_abs)) },
                         .right = &.{ .number = @floatFromInt(@mod(remainder, b_abs)) },
                         .operation = .addition,
                     } }).clone(allocator),
-                    .description = try std.fmt.allocPrint(allocator, "Since {d} is equal to or bigger than {d}, divide it by {d} and append the whole part to the decimal part.\n\nCalculate the next digit, but this time use {d} as the remainder.", .{ remainder, b_abs, b_abs, remainder - digit * b_abs }),
-                    .substeps = try trailing_substeps.toOwnedSlice(),
-                }).clone(allocator));
+                    try std.fmt.allocPrint(allocator, "Since {d} is equal to or bigger than {d}, divide it by {d} and append the whole part to the decimal part.\n\nCalculate the next digit, but this time use {d} as the remainder.", .{ remainder, b_abs, b_abs, remainder - digit * b_abs }),
+                    trailing_substeps,
+                    allocator,
+                ));
 
                 remainder -= digit * b_abs;
 
                 const result = decimal + @as(T, @floatFromInt(digit)) * @"10^-x"(trailing_zeroes + i);
-
-                try substeps.append(try (Step(T){
-                    .before = try (Expression(T){ .number = decimal }).clone(allocator),
-                    .after = try (Expression(T){ .number = result }).clone(allocator),
-                    .description = try allocator.dupe(u8, "Calculate the next digit"),
-                    .substeps = try trailing_steps.toOwnedSlice(),
-                }).clone(allocator));
+                try substeps.append(try Step(T).init(
+                    try (Expression(T){ .number = decimal }).clone(allocator),
+                    try (Expression(T){ .number = result }).clone(allocator),
+                    try allocator.dupe(u8, "Calculate the next digit"),
+                    try trailing_steps.toOwnedSlice(),
+                    allocator,
+                ));
 
                 decimal = result;
                 i += trailing_zeroes - 1;
-
-                // for (0..trailing_zeroes - 1) |_| {
-                //     std.debug.print("0", .{});
-                // }
-                // std.debug.print("{d}", .{digit});
             }
 
             // since the remainder is 0...?
 
-            try steps.append(try (Step(T){
-                .before = try steps.items[0].after.?.clone(allocator),
-                .after = try (Expression(T){ .number = (steps.items[0].after.?.number) + decimal }).clone(allocator),
-                .description = try allocator.dupe(u8, "Calculate the decimal part"),
-                .substeps = try substeps.toOwnedSlice(),
-            }).clone(allocator));
+            solution.steps[2] = try Step(T).init(
+                try solution.steps[0].after.clone(allocator),
+                try (Expression(T){ .number = (solution.steps[0].after.number) + decimal }).clone(allocator),
+                try allocator.dupe(u8, "Calculate the decimal part"),
+                try substeps.toOwnedSlice(),
+                allocator,
+            );
 
-            return Solution(T){ .steps = try steps.toOwnedSlice() };
+            return solution;
         }
 
         fn @"10^-x"(x: usize) T {
@@ -294,7 +296,7 @@ test division {
     inline for (.{ f32, f64, f128 }) |T| {
         const Division = division(T);
 
-        const ten_div_four = TestingData(T).get("10 / 4").?;
+        const ten_div_four = testingData(T).get("10 / 4").?;
 
         const bindings = try Division.structure.matches(ten_div_four);
         const solution = try Division.structure.solve(ten_div_four, bindings, testing.allocator);

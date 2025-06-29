@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
             "1 - 0", &Expression(T){ .binary = .{
@@ -27,14 +27,15 @@ pub fn @"a - 0"(comptime T: type) Variant(Key, T) {
 
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             const a = bindings.get(.a).?;
-            const solution = try Solution(T).init(1, allocator);
 
-            solution.steps[0] = try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try a.clone(allocator),
-                .description = try allocator.dupe(u8, "Subtracting 0 does nothing"),
-                .substeps = try allocator.alloc(*const Step(T), 0),
-            }).clone(allocator);
+            const solution = try Solution(T).init(1, true, allocator);
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try a.clone(allocator),
+                try allocator.dupe(u8, "Subtracting 0 does nothing"),
+                &.{},
+                allocator,
+            );
 
             return solution;
         }
@@ -83,13 +84,14 @@ test "a - 0(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Subtraction = @"a - 0"(T);
 
-        const one_minus_zero = TestingData(T).get("1 - 0").?;
+        const one_minus_zero = testingData(T).get("1 - 0").?;
 
         const bindings = try Subtraction.matches(one_minus_zero);
         const solution = try Subtraction.solve(one_minus_zero, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
+            .is_final = true,
             .steps = @constCast(&[_]*const Step(T){
                 &.{
                     .before = one_minus_zero,

@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{});
 }
 
@@ -102,18 +102,18 @@ pub fn addition(comptime T: type) Template(Key, T) {
 
         // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            const solution = try Solution(T).init(1, allocator);
-
-            solution.steps[0] = try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try (Expression(T){ .function = .{
+            const solution = try Solution(T).init(1, false, allocator);
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try Expression(T).init(.{ .function = .{
                     .name = "add",
                     .arguments = bindings,
                     .body = null,
-                } }).clone(allocator),
-                .description = try allocator.dupe(u8, ""),
-                .substeps = &.{},
-            }).clone(allocator);
+                } }, allocator),
+                try allocator.dupe(u8, ""),
+                &.{},
+                allocator,
+            );
 
             return solution;
         }

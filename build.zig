@@ -141,7 +141,7 @@ pub fn build(b: *std.Build) !void {
             \\
             \\pub inline fn tests(comptime kind: Kind, comptime T: type) std.StaticStringMap(*const Expression(T)) {
             \\    const module = inner.get(kind).?;
-            \\    return module.TestingData(T);
+            \\    return module.testingData(T);
             \\}
             \\
             \\pub inline fn variants(comptime kind: Kind, comptime T: type) blk: {
@@ -278,6 +278,8 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("src/perf.zig"),
         .target = target,
         .optimize = optimize,
+        .error_tracing = true,
+        .strip = false,
     });
     perf.root_module.addImport("corundum", root);
 

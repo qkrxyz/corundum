@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
             "4 / 1", &Expression(T){ .binary = .{
@@ -27,13 +27,15 @@ pub fn @"a ÷ 1"(comptime T: type) Variant(Key, T) {
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             const a = bindings.get(.a).?;
 
-            const solution = try Solution(T).init(1, allocator);
-            solution.steps[0] = try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try a.clone(allocator),
-                .description = try allocator.dupe(u8, "Division by one does nothing"),
-                .substeps = &.{},
-            }).clone(allocator);
+            const solution = try Solution(T).init(1, true, allocator);
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try a.clone(allocator),
+                try allocator.dupe(u8, "Division by one does nothing"),
+                &.{},
+                allocator,
+            );
+
             return solution;
         }
     };
@@ -52,13 +54,14 @@ test @"a ÷ 1" {
     inline for (.{ f16, f32, f64, f128 }) |T| {
         const Division = @"a ÷ 1"(T);
 
-        const four_div_1 = TestingData(T).get("4 / 1").?;
+        const four_div_1 = testingData(T).get("4 / 1").?;
 
         const bindings = try Division.matches(four_div_1);
         const solution = try Division.solve(four_div_1, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
+            .is_final = true,
             .steps = @constCast(&[_]*const Step(T){
                 &.{
                     .before = four_div_1,

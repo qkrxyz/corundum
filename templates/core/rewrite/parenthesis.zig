@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{ "(1)", &Expression(T){ .parenthesis = &.{ .number = 1.0 } } },
     });
@@ -24,14 +24,14 @@ pub fn parenthesis(comptime T: type) Template(Key, T) {
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             const inner = bindings.get(.inner).?;
 
-            const solution = try Solution(T).init(1, allocator);
-
-            solution.steps[0] = try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try inner.clone(allocator),
-                .description = try allocator.dupe(u8, "Simplify"),
-                .substeps = try allocator.alloc(*const Step(T), 0),
-            }).clone(allocator);
+            const solution = try Solution(T).init(1, false, allocator);
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try inner.clone(allocator),
+                try allocator.dupe(u8, "Simplify"),
+                &.{},
+                allocator,
+            );
 
             return solution;
         }
@@ -53,7 +53,7 @@ test parenthesis {
     inline for (.{ f32, f64, f128 }) |T| {
         const Parens = parenthesis(T);
 
-        const paren_one = TestingData(T).kvs.values[0];
+        const paren_one = testingData(T).kvs.values[0];
 
         try testing.expectError(error.NotApplicable, Parens.dynamic.matches(paren_one.parenthesis));
 

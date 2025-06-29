@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
             "4.5 * 1.5", &Expression(T){ .binary = .{
@@ -44,7 +44,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
             // Let e be equal to the whole part of b and f be equal to the fractional part of b.
             //
             // (c + d) * (e + f) = ce + cf + de + df <=> c + d = a and e + f = b
-            var steps = try std.ArrayList(*const Step(T)).initCapacity(allocator, 4);
+            const solution = try Solution(T).init(3, true, allocator);
 
             // c, d
             const c = @divFloor(a, 1.0);
@@ -55,11 +55,11 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
             const f = @mod(b, 1.0);
 
             // MARK: expand
-            try steps.append(try (Step(T){
-                .before = try expression.clone(allocator),
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
 
                 // ce + cf + de + df
-                .after = try (Expression(T){ .function = .{
+                try (Expression(T){ .function = .{
                     .name = "add",
                     .arguments = @constCast(&[_]*const Expression(T){
                         &.{ .binary = .{
@@ -86,7 +86,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                     .body = null,
                 } }).clone(allocator),
 
-                .description = try allocator.dupe(u8,
+                try allocator.dupe(u8,
                     \\Expand
                     \\
                     \\We can rewrite $a$ as $c + d$, where $c$ is the whole part of $a$ and $d$ is the fractional part.
@@ -94,8 +94,9 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                     \\This gives us $a * b = (c + d) * (e + f) = ce + cf + de + df$.
                 ),
 
-                .substeps = try allocator.alloc(*const Step(T), 0),
-            }).clone(allocator));
+                try allocator.alloc(*const Step(T), 0),
+                allocator,
+            );
 
             // MARK: simplify
             const ce = c * e;
@@ -103,10 +104,9 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
             const de = d * e;
             const df = d * f;
 
-            try steps.append(try (Step(T){
-                .before = try steps.items[0].after.?.clone(allocator),
-
-                .after = try (Expression(T){ .function = .{
+            solution.steps[1] = try Step(T).init(
+                try solution.steps[0].after.clone(allocator),
+                try (Expression(T){ .function = .{
                     .name = "add",
                     .arguments = @constCast(&[_]*const Expression(T){
                         &.{ .number = ce },
@@ -117,17 +117,17 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                     .body = null,
                 } }).clone(allocator),
 
-                .description = try allocator.dupe(u8, "Simplify"),
+                try allocator.dupe(u8, "Simplify"),
 
-                .substeps = blk: {
+                blk: {
                     var substeps = try allocator.alloc(*const Step(T), 4);
 
                     // always integer * integer, always one step
                     const solution_one = try solve(
-                        steps.items[0].after.?.function.arguments[0],
+                        solution.steps[0].after.function.arguments[0],
                         Bindings(Key, T).init(.{
-                            .a = steps.items[0].after.?.function.arguments[0].binary.right,
-                            .b = steps.items[0].after.?.function.arguments[0].binary.left,
+                            .a = solution.steps[0].after.function.arguments[0].binary.right,
+                            .b = solution.steps[0].after.function.arguments[0].binary.left,
                         }),
                         allocator,
                     );
@@ -136,28 +136,28 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
 
                     // always integer * small float (x2)
                     substeps[1] = try (Step(T){
-                        .before = try steps.items[0].after.?.function.arguments[1].clone(allocator),
+                        .before = try solution.steps[0].after.function.arguments[1].clone(allocator),
                         .after = try (Expression(T){ .number = cf }).clone(allocator),
                         .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ c, f }),
                         .substeps = (try solve(
-                            steps.items[0].after.?.function.arguments[1],
+                            solution.steps[0].after.function.arguments[1],
                             Bindings(Key, T).init(.{
-                                .a = steps.items[0].after.?.function.arguments[1].binary.right,
-                                .b = steps.items[0].after.?.function.arguments[1].binary.left,
+                                .a = solution.steps[0].after.function.arguments[1].binary.right,
+                                .b = solution.steps[0].after.function.arguments[1].binary.left,
                             }),
                             allocator,
                         )).steps,
                     }).clone(allocator);
 
                     substeps[2] = try (Step(T){
-                        .before = try steps.items[0].after.?.function.arguments[2].clone(allocator),
+                        .before = try solution.steps[0].after.function.arguments[2].clone(allocator),
                         .after = try (Expression(T){ .number = de }).clone(allocator),
                         .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ d, e }),
                         .substeps = (try solve(
-                            steps.items[0].after.?.function.arguments[2],
+                            solution.steps[0].after.function.arguments[2],
                             Bindings(Key, T).init(.{
-                                .a = steps.items[0].after.?.function.arguments[2].binary.left,
-                                .b = steps.items[0].after.?.function.arguments[2].binary.right,
+                                .a = solution.steps[0].after.function.arguments[2].binary.left,
+                                .b = solution.steps[0].after.function.arguments[2].binary.right,
                             }),
                             allocator,
                         )).steps,
@@ -165,14 +165,14 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
 
                     // always non-zero/one small float * non-zero/one small float
                     substeps[3] = try (Step(T){
-                        .before = try steps.items[0].after.?.function.arguments[3].clone(allocator),
+                        .before = try solution.steps[0].after.function.arguments[3].clone(allocator),
                         .after = try (Expression(T){ .number = df }).clone(allocator),
                         .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ d, f }),
                         .substeps = (try solve(
-                            steps.items[0].after.?.function.arguments[3],
+                            solution.steps[0].after.function.arguments[3],
                             Bindings(Key, T).init(.{
-                                .a = steps.items[0].after.?.function.arguments[3].binary.left,
-                                .b = steps.items[0].after.?.function.arguments[3].binary.right,
+                                .a = solution.steps[0].after.function.arguments[3].binary.left,
+                                .b = solution.steps[0].after.function.arguments[3].binary.right,
                             }),
                             allocator,
                         )).steps,
@@ -180,17 +180,19 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
 
                     break :blk substeps;
                 },
-            }).clone(allocator));
+                allocator,
+            );
 
             // MARK: add
-            try steps.append(try (Step(T){
-                .before = try steps.items[1].after.?.clone(allocator),
-                .after = try (Expression(T){ .number = ce + cf + de + df }).clone(allocator),
-                .description = try std.fmt.allocPrint(allocator, "Add {d}, {d}, {d} and {d} together", .{ ce, cf, de, df }),
-                .substeps = (try template.Templates.get(.@"core/number/n-ary/sum").module(T).dynamic.solve(steps.items[1].after.?, steps.items[1].after.?.function.arguments, allocator)).steps,
-            }).clone(allocator));
+            solution.steps[2] = try Step(T).init(
+                try solution.steps[1].after.clone(allocator),
+                try (Expression(T){ .number = ce + cf + de + df }).clone(allocator),
+                try std.fmt.allocPrint(allocator, "Add {d}, {d}, {d} and {d} together", .{ ce, cf, de, df }),
+                (try template.Templates.get(.@"core/number/n-ary/sum").module(T).dynamic.solve(solution.steps[1].after, solution.steps[1].after.function.arguments, allocator)).steps,
+                allocator,
+            );
 
-            return Solution(T){ .steps = try steps.toOwnedSlice() };
+            return solution;
         }
     };
 
@@ -250,13 +252,14 @@ test "multiplication(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Multiplication = multiplication(T);
 
-        const expression = TestingData(T).get("4.5 * 1.5").?;
+        const expression = testingData(T).get("4.5 * 1.5").?;
 
         const bindings = try Multiplication.structure.matches(expression);
         const solution = try Multiplication.structure.solve(expression, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
+            .is_final = true,
             .steps = @constCast(&[_]*const Step(T){
                 &.{
                     .before = &.{

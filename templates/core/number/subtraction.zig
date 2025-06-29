@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         // TODO move this into the variant
         .{
@@ -8,6 +8,7 @@ pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
                 .right = &.{ .number = -2.0 },
             } },
         },
+
         .{
             "2 - 1", &Expression(T){ .binary = .{
                 .operation = .subtraction,
@@ -51,21 +52,21 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
 
             // MARK: ±a - b
             if (b > 0.0) {
-                const solution = try Solution(T).init(1, allocator);
-
-                solution.steps[0] = try (Step(T){
-                    .before = try expression.clone(allocator),
-                    .after = try (Expression(T){ .number = a - b }).clone(allocator),
-                    .description = try std.fmt.allocPrint(allocator, "Subtract {d} from {d}", .{ b, a }),
-                    .substeps = try allocator.alloc(*const Step(T), 0),
-                }).clone(allocator);
+                const solution = try Solution(T).init(1, true, allocator);
+                solution.steps[0] = try Step(T).init(
+                    try expression.clone(allocator),
+                    try (Expression(T){ .number = a - b }).clone(allocator),
+                    try std.fmt.allocPrint(allocator, "Subtract {d} from {d}", .{ b, a }),
+                    try allocator.alloc(*const Step(T), 0),
+                    allocator,
+                );
 
                 return solution;
             }
 
             // MARK: ±a - (-b) = ±a + b
             const addition = template.Templates.get(.@"core/number/addition");
-            const solution = try Solution(T).init(2, allocator);
+            const solution = try Solution(T).init(2, true, allocator);
 
             const new_bindings = Bindings(addition.key, T).init(.{
                 .a = &Expression(T){ .number = a },
@@ -73,21 +74,22 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
             });
 
             // change the sign
-            solution.steps[0] = try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try (Expression(T){
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try (Expression(T){
                     .binary = .{
                         .left = new_bindings.get(.a).?,
                         .operation = .addition,
                         .right = new_bindings.get(.b).?,
                     },
                 }).clone(allocator),
-                .description = try allocator.dupe(u8, "Change the sign"),
-                .substeps = try allocator.alloc(*const Step(T), 0),
-            }).clone(allocator);
+                try allocator.dupe(u8, "Change the sign"),
+                &.{},
+                allocator,
+            );
 
             // subtract
-            const addition_result = try addition.module(T).structure.solve(solution.steps[0].after.?, new_bindings, allocator);
+            const addition_result = try addition.module(T).structure.solve(solution.steps[0].after, new_bindings, allocator);
             defer allocator.free(addition_result.steps);
 
             solution.steps[1] = addition_result.steps[0];
@@ -117,7 +119,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
 // MARK: tests
 test subtraction {
     const Subtraction = subtraction(f64);
-    const two_minus_one = TestingData(f64).kvs.values[0];
+    const two_minus_one = testingData(f64).kvs.values[0];
 
     try testing.expect(Subtraction.structure.ast.structural() == two_minus_one.structural());
 }
@@ -125,8 +127,8 @@ test subtraction {
 test "subtraction(T).matches" {
     const Subtraction = subtraction(f64);
 
-    const two_minus_one = TestingData(f64).kvs.values[1];
-    const three_minus_minus_two = TestingData(f64).kvs.values[0];
+    const two_minus_one = testingData(f64).kvs.values[1];
+    const three_minus_minus_two = testingData(f64).kvs.values[0];
 
     var bindings = try Subtraction.structure.matches(two_minus_one);
     try testing.expectEqualDeep(bindings.get(.a), two_minus_one.binary.left);
@@ -140,13 +142,14 @@ test "subtraction(T).matches" {
 test "subtraction(T).solve" {
     const Subtraction = subtraction(f64);
 
-    const two_minus_one = TestingData(f64).get("2 - 1").?;
+    const two_minus_one = testingData(f64).get("2 - 1").?;
 
     const bindings = try Subtraction.structure.matches(two_minus_one);
     const solution = try Subtraction.structure.solve(two_minus_one, bindings, testing.allocator);
     defer solution.deinit(testing.allocator);
 
     const expected = Solution(f64){
+        .is_final = true,
         .steps = @constCast(&[_]*const Step(f64){
             &.{
                 .before = two_minus_one,
@@ -163,7 +166,7 @@ test "subtraction(T).solve" {
 test "subtraction(T).solve - `±a - (-b)`" {
     const Subtraction = subtraction(f64);
 
-    const three_minus_minus_two = TestingData(f64).get("3 - (-2)").?;
+    const three_minus_minus_two = testingData(f64).get("3 - (-2)").?;
 
     const three_plus_two = Expression(f64){ .binary = .{
         .operation = .addition,
@@ -176,6 +179,7 @@ test "subtraction(T).solve - `±a - (-b)`" {
     defer solution.deinit(testing.allocator);
 
     const expected = Solution(f64){
+        .is_final = true,
         .steps = @constCast(&[_]*const Step(f64){
             &.{
                 .before = three_minus_minus_two,

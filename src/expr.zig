@@ -123,6 +123,11 @@ pub fn Expression(T: type) type {
             factorial,
         };
 
+        /// Create a new expression.
+        pub fn init(input: Self, allocator: std.mem.Allocator) !*const Self {
+            return clone(&input, allocator);
+        }
+
         /// Compute the hash of this expression.
         ///
         /// Uses XxHash64.

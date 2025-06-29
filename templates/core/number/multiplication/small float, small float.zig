@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{});
 }
 
@@ -37,7 +37,7 @@ pub fn @"small float, small float"(comptime T: type) Variant(Key, T) {
             const a = bindings.get(.a).?.number;
             const b = bindings.get(.b).?.number;
 
-            const solution = try Solution(T).init(2, allocator);
+            const solution = try Solution(T).init(2, true, allocator);
 
             const a_str = try std.fmt.allocPrint(allocator, "{d}", .{a});
             defer allocator.free(a_str);
@@ -45,7 +45,7 @@ pub fn @"small float, small float"(comptime T: type) Variant(Key, T) {
             const b_str = try std.fmt.allocPrint(allocator, "{d}", .{b});
             defer allocator.free(b_str);
 
-            // reinterpret as integers; multiply
+            // MARK: multiply
             const a_int = try std.fmt.parseFloat(T, a_str[2..]);
             const b_int = try std.fmt.parseFloat(T, b_str[2..]);
 
@@ -53,22 +53,22 @@ pub fn @"small float, small float"(comptime T: type) Variant(Key, T) {
             // When there is support for arbitrary precision, this doesn't apply.
             const multiplied = a_int * b_int;
 
-            solution.steps[0] = try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try (Expression(T){ .number = multiplied }).clone(allocator),
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try (Expression(T){ .number = multiplied }).clone(allocator),
+                try std.fmt.allocPrint(allocator, "Multiply the fractional parts of {d} and {d} ({d} and {d}) as if they were integers", .{ a, b, a_int, b_int }),
+                try allocator.alloc(*const Step(T), 0),
+                allocator,
+            );
 
-                .description = try std.fmt.allocPrint(allocator, "Multiply the fractional parts of {d} and {d} ({d} and {d}) as if they were integers", .{ a, b, a_int, b_int }),
-                .substeps = try allocator.alloc(*const Step(T), 0),
-            }).clone(allocator);
-
-            // pad left
-            solution.steps[1] = try (Step(T){
-                .before = try solution.steps[0].after.?.clone(allocator),
-                .after = try (Expression(T){ .number = @"10^-x"(a_str[2..].len + b_str[2..].len) * multiplied }).clone(allocator),
-
-                .description = try std.fmt.allocPrint(allocator, "Make the result have {d} decimal places", .{a_str[2..].len + b_str[2..].len}),
-                .substeps = try allocator.alloc(*const Step(T), 0),
-            }).clone(allocator);
+            // MARK: shift
+            solution.steps[1] = try Step(T).init(
+                try solution.steps[0].after.clone(allocator),
+                try (Expression(T){ .number = @"10^-x"(a_str[2..].len + b_str[2..].len) * multiplied }).clone(allocator),
+                try std.fmt.allocPrint(allocator, "Make the result have {d} decimal places", .{a_str[2..].len + b_str[2..].len}),
+                try allocator.alloc(*const Step(T), 0),
+                allocator,
+            );
 
             return solution;
         }

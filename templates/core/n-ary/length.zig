@@ -1,10 +1,8 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{});
 }
 
-pub const Key = enum {
-    function,
-};
+pub const Key = enum {};
 
 pub fn length(comptime T: type) Template(Key, T) {
     const Impl = struct {
@@ -12,24 +10,23 @@ pub fn length(comptime T: type) Template(Key, T) {
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
             if (expression.* != .function) return error.NotApplicable;
 
-            const bindings = Bindings(Key, T).init(.{
-                .function = expression,
-            });
+            const bindings = Bindings(Key, T).init(.{});
             return bindings;
         }
 
         // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            const function = bindings.get(.function).?;
-            const len = function.function.arguments.len;
+            _ = bindings;
+            const len = expression.function.arguments.len;
 
-            const solution = try Solution(T).init(1, allocator);
-            solution.steps[0] = try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try (Expression(T){ .number = @floatFromInt(len) }).clone(allocator),
-                .description = try std.fmt.allocPrint(allocator, "This function has {d} arguments.", .{len}),
-                .substeps = &.{},
-            }).clone(allocator);
+            const solution = try Solution(T).init(1, false, allocator);
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try Expression(T).init(.{ .number = @floatFromInt(len) }, allocator),
+                try std.fmt.allocPrint(allocator, "This function has {d} arguments.", .{len}),
+                &.{},
+                allocator,
+            );
 
             return solution;
         }
@@ -65,7 +62,7 @@ test length {
             const solution = try Length.dynamic.solve(&avg, bindings, testing.allocator);
             defer solution.deinit(testing.allocator);
 
-            try testing.expectEqual(i, solution.steps[0].after.?.number);
+            try testing.expectEqual(i, solution.steps[0].after.number);
         }
     }
 }

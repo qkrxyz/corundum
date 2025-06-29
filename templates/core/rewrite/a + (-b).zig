@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
             "1 + (-x)", &Expression(T){ .binary = .{
@@ -41,17 +41,18 @@ pub fn @"a + (-b)"(comptime T: type) Template(Key, T) {
             const a = bindings.get(.a).?;
             const b = bindings.get(.b).?.unary.operand;
 
-            const solution = try Solution(T).init(1, allocator);
-            solution.steps[0] = try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try (Expression(T){ .binary = .{
+            const solution = try Solution(T).init(1, false, allocator);
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try (Expression(T){ .binary = .{
                     .left = a,
                     .operation = .subtraction,
                     .right = b,
                 } }).clone(allocator),
-                .description = try allocator.dupe(u8, "A plus sign and minus sign give together a minus sign"),
-                .substeps = &.{},
-            }).clone(allocator);
+                try allocator.dupe(u8, "A plus sign and minus sign give together a minus sign"),
+                &.{},
+                allocator,
+            );
 
             return solution;
         }
@@ -107,6 +108,7 @@ test "a + (-b)(T).solve" {
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
+            .is_final = false,
             .steps = @constCast(&[_]*const Step(T){&.{
                 .before = &one_minus_minus_x,
                 .after = &.{ .binary = .{

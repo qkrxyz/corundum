@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
             "2 * 3", &Expression(T){ .binary = .{
@@ -36,15 +36,16 @@ pub fn @"int, int"(comptime T: type) Variant(Key, T) {
             const a = bindings.get(.a).?.number;
             const b = bindings.get(.b).?.number;
 
-            const solution = try Solution(T).init(1, allocator);
+            const solution = try Solution(T).init(1, true, allocator);
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try (Expression(T){ .number = a * b }).clone(allocator),
+                try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ a, b }),
 
-            solution.steps[0] = try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try (Expression(T){ .number = a * b }).clone(allocator),
-                .description = try std.fmt.allocPrint(allocator, "Multiply {d} by {d}", .{ a, b }),
                 // TODO actually do solution steps
-                .substeps = &.{},
-            }).clone(allocator);
+                &.{},
+                allocator,
+            );
 
             return solution;
         }
@@ -63,7 +64,7 @@ pub fn @"int, int"(comptime T: type) Variant(Key, T) {
 test "int, int(T).matches" {
     const Multiplication = @"int, int"(f64);
 
-    const two_times_three = TestingData(f64).get("2 * 3").?;
+    const two_times_three = testingData(f64).get("2 * 3").?;
 
     const half_of_ten = Expression(f64){ .binary = .{
         .operation = .multiplication,
@@ -82,13 +83,14 @@ test "int, int(T).matches" {
 test "int, int(T).solve" {
     const Multiplication = @"int, int"(f64);
 
-    const two_times_three = TestingData(f64).get("2 * 3").?;
+    const two_times_three = testingData(f64).get("2 * 3").?;
 
     const bindings = try Multiplication.matches(two_times_three);
     const solution = try Multiplication.solve(two_times_three, bindings, testing.allocator);
     defer solution.deinit(testing.allocator);
 
     const expected = Solution(f64){
+        .is_final = true,
         .steps = @constCast(&[_]*const Step(f64){
             &.{
                 .before = two_times_three,

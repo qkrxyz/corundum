@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
             "1 * 0", &Expression(T){ .binary = .{
@@ -28,14 +28,15 @@ pub fn @"a × 0"(comptime T: type) Variant(Key, T) {
         // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
             _ = bindings;
-            const solution = try Solution(T).init(1, allocator);
 
-            solution.steps[0] = try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try (Expression(T){ .number = 0 }).clone(allocator),
-                .description = try allocator.dupe(u8, "Anything multiplied by 0 is equal to 0"),
-                .substeps = try allocator.alloc(*const Step(T), 0),
-            }).clone(allocator);
+            const solution = try Solution(T).init(1, true, allocator);
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try Expression(T).init(.{ .number = 0.0 }, allocator),
+                try allocator.dupe(u8, "Anything multiplied by 0 is equal to 0"),
+                &.{},
+                allocator,
+            );
 
             return solution;
         }
@@ -55,7 +56,7 @@ test @"a × 0" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Multiplication = @"a × 0"(T);
 
-        const one_times_zero = TestingData(T).get("1 * 0").?;
+        const one_times_zero = testingData(T).get("1 * 0").?;
 
         const zero_times_one = Expression(T){ .binary = .{
             .left = &.{ .number = 0.0 },
@@ -85,13 +86,14 @@ test "a × 0(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Multiplication = @"a × 0"(T);
 
-        const one_times_zero = TestingData(T).get("1 * 0").?;
+        const one_times_zero = testingData(T).get("1 * 0").?;
 
         const bindings = try Multiplication.matches(one_times_zero);
         const solution = try Multiplication.solve(one_times_zero, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
+            .is_final = true,
             .steps = @constCast(&[_]*const Step(T){
                 &.{
                     .before = one_times_zero,

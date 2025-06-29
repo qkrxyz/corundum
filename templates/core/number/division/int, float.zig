@@ -1,4 +1,4 @@
-pub fn TestingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
+pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
             "30 / 4.5", &Expression(T){
@@ -59,7 +59,7 @@ pub fn @"int, float"(comptime T: type) Variant(Key, T) {
             const b_multiplied = b * factor;
 
             // division
-            const solution = try division.structure.solve(&Expression(T){ .binary = .{
+            const division_solution = try division.structure.solve(&Expression(T){ .binary = .{
                 .left = &.{ .number = a_multiplied },
                 .right = &.{ .number = b_multiplied },
                 .operation = .division,
@@ -68,28 +68,29 @@ pub fn @"int, float"(comptime T: type) Variant(Key, T) {
                 .b = &.{ .number = b_multiplied },
             }), allocator);
 
-            // combine steps
-            var steps = try std.ArrayList(*const Step(T)).initCapacity(allocator, solution.steps.len + 1);
+            const solution = try Solution(T).init(division_solution.steps.len + 1, true, allocator);
 
-            try steps.append(try (Step(T){
-                .before = try expression.clone(allocator),
-                .after = try (Expression(T){
+            // combine steps
+            solution.steps[0] = try Step(T).init(
+                try expression.clone(allocator),
+                try Expression(T).init(.{
                     .binary = .{
                         .left = &.{ .number = a_multiplied },
                         .right = &.{ .number = b_multiplied },
                         .operation = .division,
                     },
-                }).clone(allocator),
-                .description = try std.fmt.allocPrint(allocator, "Shift both numbers' decimal points by {d} places right", .{@log10(factor)}),
+                }, allocator),
+                try std.fmt.allocPrint(allocator, "Shift both numbers' decimal points by {d} places right", .{@log10(factor)}),
 
                 // TODO populate this with steps from the `factor` blk
-                .substeps = &.{},
-            }).clone(allocator));
+                &.{},
+                allocator,
+            );
 
-            try steps.appendSlice(solution.steps);
-            allocator.free(solution.steps);
+            @memcpy(solution.steps[1..solution.steps.len], division_solution.steps);
+            defer allocator.free(division_solution.steps);
 
-            return Solution(T){ .steps = try steps.toOwnedSlice() };
+            return solution;
         }
     };
 
@@ -106,7 +107,7 @@ test @"int, float" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Division = @"int, float"(T);
 
-        const thirty_div_four_half = TestingData(T).get("30 / 4.5").?;
+        const thirty_div_four_half = testingData(T).get("30 / 4.5").?;
 
         const bindings = try Division.matches(thirty_div_four_half);
         const solution = try Division.solve(thirty_div_four_half, bindings, testing.allocator);
