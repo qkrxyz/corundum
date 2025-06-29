@@ -262,16 +262,6 @@ pub fn build(b: *std.Build) !void {
     const wasm_step = b.step("wasm", "Generate a WASM library");
     wasm_step.dependOn(&wasm_install.step);
 
-    // docs
-    const docs_step = b.step("docs", "Generate documentation");
-
-    const install_docs = b.addInstallDirectory(.{
-        .source_dir = library.getEmittedDocs(),
-        .install_dir = .prefix,
-        .install_subdir = "docs",
-    });
-    docs_step.dependOn(&install_docs.step);
-
     // perf
     const perf = b.addExecutable(.{
         .name = "perf",

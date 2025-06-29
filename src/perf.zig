@@ -306,7 +306,7 @@ pub fn main() !void {
         const diff_size = @as(isize, @intCast(to_serialize.compressed)) - @as(isize, @intCast(before.compressed));
         const percentage_size = @as(f64, @floatFromInt(diff_size)) / @as(f64, @floatFromInt(before.compressed)) * 100.0;
         std.debug.print(
-            "\x1b[1mSize\x1b[0m {d:.2}/{d:.2} KB, {d:.2}/{d:.2} KB // \x1b[4m{d:.2}%\x1b[0m{s}\n",
+            "\x1b[1mSize\x1b[0m {d:.2}/{d:.2} bytes, {d:.2}/{d:.2} bytes // \x1b[4m{d:.2}%\x1b[0m{s}\n",
             .{
                 before.uncompressed,
                 before.compressed,
@@ -328,6 +328,6 @@ pub fn main() !void {
                 run_data.outliers,
             });
         }
-        std.debug.print("\x1b[1mSize\x1b[0m {d:.2}/{d:.2} KB\n", .{ to_serialize.uncompressed, to_serialize.compressed });
+        std.debug.print("\x1b[1mSize\x1b[0m {d:.2}/{d:.2} bytes\n", .{ to_serialize.uncompressed, to_serialize.compressed });
     }
 }
