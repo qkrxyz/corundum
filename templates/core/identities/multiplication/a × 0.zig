@@ -1,41 +1,42 @@
 pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
-            "0 / x",
-            &Expression(T){ .binary = .{
-                .left = &.{ .number = 0.0 },
-                .operation = .division,
-                .right = &.{ .variable = "x" },
+            "1 * 0", &Expression(T){ .binary = .{
+                .left = &.{ .number = 1.0 },
+                .operation = .multiplication,
+                .right = &.{ .number = 0.0 },
             } },
         },
     });
 }
 
-pub const Key = enum {
-    a,
-};
+pub const Key = enum {};
 
-pub fn @"0 ÷ a"(comptime T: type) Template(Key, T) {
+pub fn @"a × 0"(comptime T: type) Template(Key, T) {
     const Impl = struct {
         // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            if (expression.* != .binary) return error.NotApplicable;
-            if (expression.binary.operation != .division) return error.NotApplicable;
+            const bindings = Bindings(Key, T).init(.{});
 
-            if (expression.binary.left.* == .number and expression.binary.left.number == 0.0) return Bindings(Key, T).init(.{ .a = expression.binary.right });
+            if (expression.* != .binary) return error.NotApplicable;
+            if (expression.binary.operation != .multiplication) return error.NotApplicable;
+
+            if ((expression.binary.left.* == .number and expression.binary.left.number == 0.0) or (expression.binary.right.* == .number and expression.binary.right.number == 0.0)) {
+                return bindings;
+            }
 
             return error.NoZero;
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             _ = bindings;
 
             const solution = try Solution(T).init(1, true, allocator);
             solution.steps[0] = try Step(T).init(
                 try expression.clone(allocator),
                 try Expression(T).init(.{ .number = 0.0 }, allocator),
-                try allocator.dupe(u8, "0 divided by anything is equal to 0"),
+                try allocator.dupe(u8, "Anything multiplied by 0 is equal to 0"),
                 &.{},
                 allocator,
             );
@@ -46,7 +47,7 @@ pub fn @"0 ÷ a"(comptime T: type) Template(Key, T) {
 
     // MARK: template
     return Template(Key, T){ .dynamic = .{
-        .name = "Division: 0 ÷ a",
+        .name = "Multiplication: a × 0",
         .matches = Impl.matches,
         .solve = Impl.solve,
         .variants = &.{},
@@ -54,25 +55,25 @@ pub fn @"0 ÷ a"(comptime T: type) Template(Key, T) {
 }
 
 // MARK: tests
-test @"0 ÷ a" {
+test @"a × 0" {
     inline for (.{ f32, f64, f128 }) |T| {
-        const Division = @"0 ÷ a"(T);
+        const Multiplication = @"a × 0"(T);
 
-        const zero_div_one = Expression(T){ .binary = .{
-            .left = &.{ .number = 0.0 },
-            .operation = .division,
-            .right = &.{ .number = 1.0 },
+        const one_times_zero = Expression(T){ .binary = .{
+            .left = &.{ .number = 1.0 },
+            .operation = .multiplication,
+            .right = &.{ .number = 0.0 },
         } };
 
-        const zero_div_x = Expression(T){ .binary = .{
+        const zero_times_x = Expression(T){ .binary = .{
             .left = &.{ .number = 0.0 },
-            .operation = .division,
+            .operation = .multiplication,
             .right = &.{ .variable = "x" },
         } };
 
-        const one_div_function = Expression(T){ .binary = .{
+        const one_times_function = Expression(T){ .binary = .{
             .left = &.{ .number = 1.0 },
-            .operation = .division,
+            .operation = .multiplication,
             .right = &.{ .function = .{
                 .name = "x",
                 .arguments = @constCast(&[_]*const Expression(T){}),
@@ -80,33 +81,30 @@ test @"0 ÷ a" {
             } },
         } };
 
-        var bindings = try Division.dynamic.matches(&zero_div_one);
-        try testing.expectEqualDeep(zero_div_one.binary.right, bindings.get(.a).?);
+        var bindings = try Multiplication.dynamic.matches(&one_times_zero);
+        bindings = try Multiplication.dynamic.matches(&zero_times_x);
 
-        bindings = try Division.dynamic.matches(&zero_div_x);
-        try testing.expectEqualDeep(zero_div_x.binary.right, bindings.get(.a).?);
-
-        try testing.expectError(error.NoZero, Division.dynamic.matches(&one_div_function));
+        try testing.expectError(error.NoZero, Multiplication.dynamic.matches(&one_times_function));
     }
 }
 
-test "0 ÷ a(T).solve" {
+test "a × 0(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
-        const Division = @"0 ÷ a"(T);
+        const Multiplication = @"a × 0"(T);
 
-        const zero_div_x = testingData(T).get("0 / x").?;
+        const one_times_zero = testingData(T).get("1 * 0").?;
 
-        const bindings = try Division.dynamic.matches(zero_div_x);
-        const solution = try Division.dynamic.solve(zero_div_x, bindings, testing.allocator);
+        const bindings = try Multiplication.dynamic.matches(one_times_zero);
+        const solution = try Multiplication.dynamic.solve(one_times_zero, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
             .is_final = true,
             .steps = @constCast(&[_]*const Step(T){
                 &.{
-                    .before = zero_div_x,
+                    .before = one_times_zero,
                     .after = &.{ .number = 0.0 },
-                    .description = "0 divided by anything is equal to 0",
+                    .description = "Anything multiplied by 0 is equal to 0",
                     .substeps = &.{},
                 },
             }),

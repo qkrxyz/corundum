@@ -31,7 +31,7 @@ pub fn negative(comptime T: type) Variant(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             _ = expression;
 
             const divFloor = template.Templates.get(.@"builtin/functions/divFloor").module(T);

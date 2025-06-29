@@ -63,7 +63,7 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
         // - 6900, 7130, 7360, 7590, 7360 | 300, 310, 320, 330, 320
         // - 7360, 7383, 7406, 7383       | 320, 321, 322, 321
         // Since we can't increment the multiplier by a value lower than 1, we have our result.
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             for (variants) |variant| {
                 const new_bindings = variant.matches(expression) catch continue;
 

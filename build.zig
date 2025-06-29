@@ -68,6 +68,35 @@ pub fn build(b: *std.Build) !void {
             \\    score: usize,
             \\};
             \\
+            \\pub inline fn contains(key: []const u8) []Kind {
+            \\    @setEvalBranchQuota((1 << 32) - 1);
+            \\
+            \\    comptime var result: [std.meta.fields(Kind).len]Kind = undefined;
+            \\    comptime var length: comptime_int = 0;
+            \\
+            \\    inline for (std.meta.fields(Kind)) |entry| {
+            \\        if(comptime std.mem.indexOf(u8, entry.name, key) != null) {
+            \\            result[length] = @enumFromInt(entry.value);
+            \\            length += 1;
+            \\        }
+            \\    }
+            \\
+            \\    return result[0..length];
+            \\}
+            \\
+            \\pub inline fn resolve(kind: Kind, comptime T: type) blk: {
+            \\    @setEvalBranchQuota((1 << 32) - 1);
+            \\    const module = get(kind);
+            \\
+            \\    if (@typeInfo(@TypeOf(module)) == .@"fn") @compileError("cannot resolve a variant");
+            \\
+            \\    break :blk template.Template(module.key, T);
+            \\} {
+            \\    const module = get(kind);
+            \\
+            \\    return module.module(T);
+            \\}
+            \\
             \\pub inline fn all() []Kind {
             \\    @setEvalBranchQuota((1 << 32) - 1);
             \\    comptime var kinds: [std.meta.fields(Kind).len]Kind = undefined;

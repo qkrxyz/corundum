@@ -40,7 +40,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
 
         // MARK: .solve()
         // TODO separate into variants
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             for (variants) |variant| {
                 const new_bindings = variant.matches(expression) catch continue;
 
@@ -57,7 +57,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
                     try expression.clone(allocator),
                     try (Expression(T){ .number = a - b }).clone(allocator),
                     try std.fmt.allocPrint(allocator, "Subtract {d} from {d}", .{ b, a }),
-                    try allocator.alloc(*const Step(T), 0),
+                    &.{},
                     allocator,
                 );
 

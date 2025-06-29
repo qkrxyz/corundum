@@ -33,7 +33,7 @@ pub fn @"small float, small float"(comptime T: type) Variant(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             const a = bindings.get(.a).?.number;
             const b = bindings.get(.b).?.number;
 
@@ -46,8 +46,8 @@ pub fn @"small float, small float"(comptime T: type) Variant(Key, T) {
             defer allocator.free(b_str);
 
             // MARK: multiply
-            const a_int = try std.fmt.parseFloat(T, a_str[2..]);
-            const b_int = try std.fmt.parseFloat(T, b_str[2..]);
+            const a_int = std.fmt.parseFloat(T, a_str[2..]) catch unreachable;
+            const b_int = std.fmt.parseFloat(T, b_str[2..]) catch unreachable;
 
             // It can be inaccurate for very long fractions, but the inaccuracy should be very small (and realistically unreachable).
             // When there is support for arbitrary precision, this doesn't apply.
@@ -57,7 +57,7 @@ pub fn @"small float, small float"(comptime T: type) Variant(Key, T) {
                 try expression.clone(allocator),
                 try (Expression(T){ .number = multiplied }).clone(allocator),
                 try std.fmt.allocPrint(allocator, "Multiply the fractional parts of {d} and {d} ({d} and {d}) as if they were integers", .{ a, b, a_int, b_int }),
-                try allocator.alloc(*const Step(T), 0),
+                &.{},
                 allocator,
             );
 
@@ -66,7 +66,7 @@ pub fn @"small float, small float"(comptime T: type) Variant(Key, T) {
                 try solution.steps[0].after.clone(allocator),
                 try (Expression(T){ .number = @"10^-x"(a_str[2..].len + b_str[2..].len) * multiplied }).clone(allocator),
                 try std.fmt.allocPrint(allocator, "Make the result have {d} decimal places", .{a_str[2..].len + b_str[2..].len}),
-                try allocator.alloc(*const Step(T), 0),
+                &.{},
                 allocator,
             );
 

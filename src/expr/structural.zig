@@ -5,11 +5,11 @@ pub fn structural(comptime T: type, expression: *const Expression(T), hasher: an
     };
 
     if (expression.* == .templated) {
-        @call(.always_inline, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(expression.templated)} });
+        @call(.auto, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(expression.templated)} });
         return;
     }
 
-    @call(.always_inline, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(expression.*)} });
+    @call(.auto, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(expression.*)} });
 
     switch (expression.*) {
         .number, .variable, .boolean => return,
@@ -20,20 +20,20 @@ pub fn structural(comptime T: type, expression: *const Expression(T), hasher: an
         .equation => {
             structural(T, expression.equation.left, hasher);
             structural(T, expression.equation.right, hasher);
-            @call(.always_inline, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(expression.equation.sign)} });
+            @call(.auto, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(expression.equation.sign)} });
         },
         .binary => {
             structural(T, expression.binary.left, hasher);
             structural(T, expression.binary.right, hasher);
-            @call(.always_inline, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(expression.binary.operation)} });
+            @call(.auto, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(expression.binary.operation)} });
         },
         .unary => {
             structural(T, expression.unary.operand, hasher);
-            @call(.always_inline, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(expression.unary.operation)} });
+            @call(.auto, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(expression.unary.operation)} });
         },
         .function => {
-            @call(.always_inline, Hasher.update, .{ hasher, expression.function.name });
-            @call(.always_inline, Hasher.update, .{ hasher, &std.mem.toBytes(@as(usize, expression.function.arguments.len)) });
+            @call(.auto, Hasher.update, .{ hasher, expression.function.name });
+            @call(.auto, Hasher.update, .{ hasher, &std.mem.toBytes(@as(usize, expression.function.arguments.len)) });
 
             for (expression.function.arguments) |argument| {
                 structural(T, argument, hasher);

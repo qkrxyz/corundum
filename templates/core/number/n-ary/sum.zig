@@ -35,7 +35,7 @@ pub fn sum(comptime T: type) Template(Key, T) {
 
         // MARK: .solve()
         // TODO call @"core/number/addition" so that the identities are handled correctly
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             const solution = try Solution(T).init(bindings.len - 1, true, allocator);
 
             const initial_args = blk: {

@@ -11,9 +11,7 @@ pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     });
 }
 
-pub const Key = enum {
-    a,
-};
+pub const Key = enum {};
 
 pub fn @"a ÷ a"(comptime T: type) Template(Key, T) {
     const Impl = struct {
@@ -22,13 +20,13 @@ pub fn @"a ÷ a"(comptime T: type) Template(Key, T) {
             if (expression.* != .binary) return error.NotApplicable;
             if (expression.binary.operation != .division) return error.NotApplicable;
 
-            if (expression.binary.left.hash() == expression.binary.right.hash()) return Bindings(Key, T).init(.{ .a = expression.binary.left });
+            if (expression.binary.left.hash() == expression.binary.right.hash()) return Bindings(Key, T).init(.{});
 
             return error.NoZero;
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             _ = bindings;
 
             const solution = try Solution(T).init(1, true, allocator);
@@ -81,10 +79,7 @@ test @"a ÷ a" {
         } };
 
         var bindings = try Division.dynamic.matches(&one_div_one);
-        try testing.expectEqualDeep(one_div_one.binary.left, bindings.get(.a).?);
-
         bindings = try Division.dynamic.matches(&x_div_x);
-        try testing.expectEqualDeep(x_div_x.binary.left, bindings.get(.a).?);
 
         try testing.expectError(error.NoZero, Division.dynamic.matches(&one_div_function));
     }

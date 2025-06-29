@@ -4,12 +4,12 @@ pub fn hash(comptime T: type, expression: *const Expression(T), hasher: anytype)
         else => @TypeOf(hasher),
     };
 
-    @call(.always_inline, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(expression.*)} });
+    @call(.auto, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(expression.*)} });
 
     switch (expression.*) {
-        .number => |number| @call(.always_inline, Hasher.update, .{ hasher, &std.mem.toBytes(number) }),
-        .variable => |variable| @call(.always_inline, Hasher.update, .{ hasher, variable }),
-        .boolean => |boolean| @call(.always_inline, Hasher.update, .{ hasher, &[_]u8{@intFromBool(boolean)} }),
+        .number => |number| @call(.auto, Hasher.update, .{ hasher, &std.mem.toBytes(number) }),
+        .variable => |variable| @call(.auto, Hasher.update, .{ hasher, variable }),
+        .boolean => |boolean| @call(.auto, Hasher.update, .{ hasher, &[_]u8{@intFromBool(boolean)} }),
         .fraction => |fraction| {
             hash(T, fraction.numerator, hasher);
             hash(T, fraction.denominator, hasher);
@@ -17,20 +17,20 @@ pub fn hash(comptime T: type, expression: *const Expression(T), hasher: anytype)
         .equation => |equation| {
             hash(T, equation.left, hasher);
             hash(T, equation.right, hasher);
-            @call(.always_inline, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(equation.sign)} });
+            @call(.auto, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(equation.sign)} });
         },
         .binary => |binary| {
             hash(T, binary.left, hasher);
             hash(T, binary.right, hasher);
-            @call(.always_inline, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(binary.operation)} });
+            @call(.auto, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(binary.operation)} });
         },
         .unary => |unary| {
             hash(T, unary.operand, hasher);
-            @call(.always_inline, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(unary.operation)} });
+            @call(.auto, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(unary.operation)} });
         },
         .function => |function| {
-            @call(.always_inline, Hasher.update, .{ hasher, function.name });
-            @call(.always_inline, Hasher.update, .{ hasher, &std.mem.toBytes(@as(usize, function.arguments.len)) });
+            @call(.auto, Hasher.update, .{ hasher, function.name });
+            @call(.auto, Hasher.update, .{ hasher, &std.mem.toBytes(@as(usize, function.arguments.len)) });
 
             for (function.arguments) |argument| {
                 hash(T, argument, hasher);
@@ -38,7 +38,7 @@ pub fn hash(comptime T: type, expression: *const Expression(T), hasher: anytype)
 
             if (function.body) |body| hash(T, body, hasher);
         },
-        .templated => |kind| @call(.always_inline, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(kind)} }),
+        .templated => |kind| @call(.auto, Hasher.update, .{ hasher, &[_]u8{@intFromEnum(kind)} }),
         .parenthesis => |inner| hash(T, inner, hasher),
     }
 }

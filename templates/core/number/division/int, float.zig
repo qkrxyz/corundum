@@ -43,7 +43,7 @@ pub fn @"int, float"(comptime T: type) Variant(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             const division = template.Templates.get(.@"core/number/division").module(T);
             const a = bindings.get(.a).?.number;
             const b = bindings.get(.b).?.number;

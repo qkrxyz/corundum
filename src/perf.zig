@@ -140,7 +140,10 @@ fn run(
         }
         const higher_idx = i;
 
-        break :blk times[lower_idx..higher_idx];
+        const result = times[lower_idx..higher_idx];
+
+        if (result.len == 0) break :blk @constCast(&times);
+        break :blk result;
     };
 
     var sum: u64 = 0;
@@ -151,7 +154,7 @@ fn run(
     const average = @as(f64, @floatFromInt(sum)) / @as(f64, @floatFromInt(filtered.len));
 
     // mean
-    const mean: f64 = @floatFromInt(times[filtered.len / 2]);
+    const mean: f64 = @floatFromInt(filtered[filtered.len / 2]);
 
     // std deviation
     var variance_sum: f64 = 0.0;
@@ -281,25 +284,34 @@ pub fn main() !void {
         std.debug.print("\x1b[1mTimestamp\x1b[0m {d}, {d}\n", .{ before.timestamp, to_serialize.timestamp });
         std.debug.print("\x1b[1mIterations\x1b[0m {d}\n", .{ITERATIONS});
 
-        for (before.results) |value| {
-            const after = blk: {
-                for (to_serialize.results) |run_data| {
+        outer: for (to_serialize.results) |value| {
+            const before_run = blk: {
+                for (before.results) |run_data| {
                     if (std.mem.eql(u8, run_data.name, value.name) and run_data.input.hash() == value.input.hash()) break :blk run_data;
                 }
 
-                @panic("every template from the last run must have a corresponding run from the current perf test");
+                std.debug.print("\x1b[1m{s}\x1b[0m [{s}] // {d:.2} μs ({d} outliers)\n", .{
+                    @tagName(@as(template.TemplatesKind, @enumFromInt(value.kind))),
+                    value.name,
+                    value.average / 1000,
+                    value.outliers,
+                });
+
+                continue :outer;
             };
 
-            const diff_avg = after.average - value.average;
-            const percentage = (diff_avg / value.average) * 100;
+            const diff_avg = before_run.average - value.average;
+            const percentage = (diff_avg / before_run.average) * 100;
             std.debug.print("\x1b[1m{s}\x1b[0m [{s}] // {d:.2} μs, {d:.2} μs // \x1b[4m{d: <4.2}%\x1b[0m ({d} outliers){s}\n", .{
                 @tagName(@as(template.TemplatesKind, @enumFromInt(value.kind))),
                 value.name,
                 value.average / 1000,
-                after.average / 1000,
+                before_run.average / 1000,
                 percentage,
                 value.outliers,
-                if (diff_avg > 1000 and percentage > 10.0) " \x1b[1;31mregressed\x1b[0m" else "",
+
+                // discard run-to-run variance (500 ns)
+                if (diff_avg > 1000 and percentage > 10.0 and before_run.average > 5000) " \x1b[1;31mregressed\x1b[0m" else "",
             });
         }
 

@@ -30,7 +30,7 @@ pub fn @"a ÷ 1"(comptime T: type) Variant(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             const a = bindings.get(.a).?;
 
             const solution = try Solution(T).init(1, true, allocator);

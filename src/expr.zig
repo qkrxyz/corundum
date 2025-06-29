@@ -57,13 +57,6 @@ pub fn Expression(T: type) type {
             body: ?*const Self,
             name: []const u8,
             arguments: []*const Self,
-
-            pub inline fn create(name: []const u8, arguments: []*const Self) Self {
-                return Self{ .function = .{
-                    .name = name,
-                    .arguments = arguments,
-                } };
-            }
         },
 
         /// Represents the expression kind this expression is a placeholder for.
@@ -150,7 +143,7 @@ pub fn Expression(T: type) type {
         }
 
         /// Creates a deep clone of this expression.
-        pub fn clone(self: *const Self, allocator: std.mem.Allocator) !*const Self {
+        pub fn clone(self: *const Self, allocator: std.mem.Allocator) std.mem.Allocator.Error!*const Self {
             return clone_impl(T, self, allocator);
         }
 

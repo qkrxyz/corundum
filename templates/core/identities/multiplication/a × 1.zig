@@ -1,10 +1,10 @@
 pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
-            "1 * 0", &Expression(T){ .binary = .{
-                .left = &.{ .number = 1.0 },
+            "x * 1", &Expression(T){ .binary = .{
+                .left = &.{ .variable = "x" },
                 .operation = .multiplication,
-                .right = &.{ .number = 0.0 },
+                .right = &.{ .number = 1.0 },
             } },
         },
     });
@@ -12,34 +12,36 @@ pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
 
 pub const Key = enum {
     a,
-    b,
 };
 
-pub fn @"a × 0"(comptime T: type) Template(Key, T) {
+pub fn @"a × 1"(comptime T: type) Template(Key, T) {
     const Impl = struct {
         // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
-            const bindings = Bindings(Key, T).init(.{});
-
             if (expression.* != .binary) return error.NotApplicable;
             if (expression.binary.operation != .multiplication) return error.NotApplicable;
 
-            if ((expression.binary.left.* == .number and expression.binary.left.number == 0.0) or (expression.binary.right.* == .number and expression.binary.right.number == 0.0)) {
-                return bindings;
+            const left = expression.binary.left;
+            const right = expression.binary.right;
+
+            if (left.* == .number and left.number == 1.0 and !(right.* == .number and right.number == 0.0)) {
+                return Bindings(Key, T).init(.{ .a = expression.binary.right });
+            } else if (right.* == .number and right.number == 1.0 and !(left.* == .number and left.number == 0.0)) {
+                return Bindings(Key, T).init(.{ .a = expression.binary.left });
             }
 
-            return error.NoZero;
+            return error.NoOne;
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
-            _ = bindings;
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            const a = bindings.get(.a).?;
 
             const solution = try Solution(T).init(1, true, allocator);
             solution.steps[0] = try Step(T).init(
                 try expression.clone(allocator),
-                try Expression(T).init(.{ .number = 0.0 }, allocator),
-                try allocator.dupe(u8, "Anything multiplied by 0 is equal to 0"),
+                try a.clone(allocator),
+                try allocator.dupe(u8, "Anything multiplied by 1 is equal to itself"),
                 &.{},
                 allocator,
             );
@@ -50,7 +52,7 @@ pub fn @"a × 0"(comptime T: type) Template(Key, T) {
 
     // MARK: template
     return Template(Key, T){ .dynamic = .{
-        .name = "Multiplication: a × 0",
+        .name = "Multiplication: a × 1",
         .matches = Impl.matches,
         .solve = Impl.solve,
         .variants = &.{},
@@ -58,20 +60,14 @@ pub fn @"a × 0"(comptime T: type) Template(Key, T) {
 }
 
 // MARK: tests
-test @"a × 0" {
+test @"a × 1" {
     inline for (.{ f32, f64, f128 }) |T| {
-        const Multiplication = @"a × 0"(T);
+        const Multiplication = @"a × 1"(T);
 
         const one_times_zero = Expression(T){ .binary = .{
             .left = &.{ .number = 1.0 },
             .operation = .multiplication,
             .right = &.{ .number = 0.0 },
-        } };
-
-        const zero_times_x = Expression(T){ .binary = .{
-            .left = &.{ .number = 0.0 },
-            .operation = .multiplication,
-            .right = &.{ .variable = "x" },
         } };
 
         const one_times_function = Expression(T){ .binary = .{
@@ -84,35 +80,35 @@ test @"a × 0" {
             } },
         } };
 
-        var bindings = try Multiplication.dynamic.matches(&one_times_zero);
-        try testing.expectEqual(null, bindings.get(.a));
-        try testing.expectEqual(null, bindings.get(.b));
+        const x_times_one = testingData(T).get("x * 1").?;
 
-        bindings = try Multiplication.dynamic.matches(&zero_times_x);
-        try testing.expectEqual(null, bindings.get(.a));
-        try testing.expectEqual(null, bindings.get(.b));
+        var bindings = try Multiplication.dynamic.matches(x_times_one);
+        try testing.expectEqual(x_times_one.binary.left, bindings.get(.a));
 
-        try testing.expectError(error.NoZero, Multiplication.dynamic.matches(&one_times_function));
+        bindings = try Multiplication.dynamic.matches(&one_times_function);
+        try testing.expectEqual(one_times_function.binary.right, bindings.get(.a));
+
+        try testing.expectError(error.NoOne, Multiplication.dynamic.matches(&one_times_zero));
     }
 }
 
-test "a × 0(T).solve" {
+test "a × 1(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
-        const Multiplication = @"a × 0"(T);
+        const Multiplication = @"a × 1"(T);
 
-        const one_times_zero = testingData(T).get("1 * 0").?;
+        const x_times_one = testingData(T).get("x * 1").?;
 
-        const bindings = try Multiplication.dynamic.matches(one_times_zero);
-        const solution = try Multiplication.dynamic.solve(one_times_zero, bindings, testing.allocator);
+        const bindings = try Multiplication.dynamic.matches(x_times_one);
+        const solution = try Multiplication.dynamic.solve(x_times_one, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
             .is_final = true,
             .steps = @constCast(&[_]*const Step(T){
                 &.{
-                    .before = one_times_zero,
-                    .after = &.{ .number = 0.0 },
-                    .description = "Anything multiplied by 0 is equal to 0",
+                    .before = x_times_one,
+                    .after = &.{ .variable = "x" },
+                    .description = "Anything multiplied by 1 is equal to itself",
                     .substeps = &.{},
                 },
             }),

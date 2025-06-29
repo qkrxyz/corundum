@@ -1,4 +1,4 @@
-pub fn clone(comptime T: type, expression: *const Expression(T), allocator: std.mem.Allocator) anyerror!*const Expression(T) {
+pub fn clone(comptime T: type, expression: *const Expression(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!*const Expression(T) {
     const result = try allocator.create(Expression(T));
 
     result.* = switch (expression.*) {

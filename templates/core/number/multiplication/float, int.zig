@@ -38,7 +38,7 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             const I = @Type(.{ .int = .{ .bits = @bitSizeOf(T), .signedness = .unsigned } });
 
             const a, const b = .{ bindings.get(.a).?.number, bindings.get(.b).?.number };
@@ -122,7 +122,7 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
                             const d_str = try std.fmt.allocPrint(allocator, "{d}", .{d});
                             defer allocator.free(d_str);
 
-                            const d_int = try std.fmt.parseFloat(T, d_str[2..]);
+                            const d_int = std.fmt.parseFloat(T, d_str[2..]) catch unreachable;
                             const multiplied = d_int * b;
 
                             float_integer_steps[0] = try (Step(T){
@@ -142,7 +142,7 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
                                 const truncated: I = @intFromFloat(@trunc(b));
 
                                 var i: I = 0;
-                                while (try std.math.powi(I, 10, i) <= truncated) : (i += 1) {}
+                                while (std.math.powi(I, 10, i) catch unreachable <= truncated) : (i += 1) {}
 
                                 break :b_len_blk i;
                             };
@@ -151,7 +151,7 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
                             float_integer_steps[1] = try (Step(T){
                                 .before = try float_integer_steps[0].after.clone(allocator),
                                 .after = try Expression(T).init(.{
-                                    .number = multiplied / @as(T, @floatFromInt(try std.math.powi(I, 10, shift - 1))),
+                                    .number = multiplied / @as(T, @floatFromInt(std.math.powi(I, 10, shift - 1) catch unreachable)),
                                 }, allocator),
                                 .description = try std.fmt.allocPrint(allocator, "Move the decimal point left by {d} place(-s)", .{shift - 1}),
                                 .substeps = &.{},

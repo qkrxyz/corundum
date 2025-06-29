@@ -30,7 +30,26 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            inline for (template.Templates.contains("core/identities/multiplication")) |kind| {
+                const resolved = template.Templates.resolve(kind, T);
+
+                switch (resolved) {
+                    .dynamic => |dynamic| {
+                        const new_bindings = if (@typeInfo(@TypeOf(dynamic.matches)).@"fn".params.len == 2) dynamic.matches(expression, allocator) else dynamic.matches(expression);
+
+                        if (new_bindings) |b| return dynamic.solve(expression, b, allocator) else |_| {}
+                    },
+                    .structure => |structure| {
+                        if (structure.matches(expression)) |b| {
+                            return structure.solve(expression, b, allocator);
+                        } else |_| {}
+                    },
+                    // this is a structural template
+                    .identity => unreachable,
+                }
+            }
+
             for (variants) |variant| {
                 const new_bindings = variant.matches(expression) catch continue;
 
@@ -94,7 +113,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                     \\This gives us $a * b = (c + d) * (e + f) = ce + cf + de + df$.
                 ),
 
-                try allocator.alloc(*const Step(T), 0),
+                &.{},
                 allocator,
             );
 

@@ -67,7 +67,7 @@ pub fn Template(comptime Key: type, comptime T: type) type {
         identity: struct {
             name: []const u8,
             ast: Expression(T),
-            proof: fn () anyerror!Solution(T),
+            proof: fn () std.mem.Allocator.Error!Solution(T),
         },
 
         /// A mathematical template that allows for templated variables of a given type.
@@ -87,7 +87,7 @@ pub fn Template(comptime Key: type, comptime T: type) type {
             name: []const u8,
             ast: Expression(T),
             matches: fn (*const Expression(T)) anyerror!Bindings(Key, T),
-            solve: fn (*const Expression(T), Bindings(Key, T), std.mem.Allocator) anyerror!Solution(T),
+            solve: fn (*const Expression(T), Bindings(Key, T), std.mem.Allocator) std.mem.Allocator.Error!Solution(T),
             variants: []Variant(Key, T),
         },
 
@@ -104,7 +104,7 @@ pub fn Template(comptime Key: type, comptime T: type) type {
         dynamic: struct {
             name: []const u8,
             matches: if (@typeInfo(Key) != .@"enum") fn (*const Expression(T), std.mem.Allocator) anyerror!Bindings(Key, T) else fn (*const Expression(T)) anyerror!Bindings(Key, T),
-            solve: fn (*const Expression(T), Bindings(Key, T), std.mem.Allocator) anyerror!Solution(T),
+            solve: fn (*const Expression(T), Bindings(Key, T), std.mem.Allocator) std.mem.Allocator.Error!Solution(T),
             variants: []Variant(Key, T),
         },
     };

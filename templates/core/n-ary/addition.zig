@@ -101,7 +101,7 @@ pub fn addition(comptime T: type) Template(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) anyerror!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             const solution = try Solution(T).init(1, false, allocator);
             solution.steps[0] = try Step(T).init(
                 try expression.clone(allocator),
