@@ -100,10 +100,10 @@ test @"float, float" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Division = @"float, float"(T);
 
-        const four_half_div_one_half = testingData(T).get("4.5 / 1.5").?;
+        const four_half_div_zero_fifteen = testingData(T).get("4.5 / 0.15").?;
 
-        const bindings = try Division.matches(four_half_div_one_half);
-        const solution = try Division.solve(four_half_div_one_half, bindings, testing.allocator);
+        const bindings = try Division.matches(four_half_div_zero_fifteen);
+        const solution = try Division.solve(four_half_div_zero_fifteen, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
     }
 }

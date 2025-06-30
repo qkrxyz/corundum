@@ -320,10 +320,10 @@ test division {
     inline for (.{ f32, f64, f128 }) |T| {
         const Division = division(T);
 
-        const ten_div_four = testingData(T).get("10 / 4").?;
+        const four_fifty_div_fifteen = testingData(T).get("450 / 15").?;
 
-        const bindings = try Division.structure.matches(ten_div_four);
-        const solution = try Division.structure.solve(ten_div_four, bindings, testing.allocator);
+        const bindings = try Division.structure.matches(four_fifty_div_fifteen);
+        const solution = try Division.structure.solve(four_fifty_div_fifteen, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
     }
 }
