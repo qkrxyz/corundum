@@ -199,7 +199,7 @@ It is a reference to the raw speed of the engine ("_festina_"), achieved by (mos
 
 ## License
 
-Licensed under the [MIT License](./LICENSE).
+Licensed under the [zlib/libpng License](./LICENSE).
 
 ## Cat picture
 
