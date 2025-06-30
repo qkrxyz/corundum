@@ -31,20 +31,33 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
 
         // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            @setFloatMode(.optimized);
+
             inline for (template.Templates.contains("core/identities/multiplication")) |kind| {
                 const resolved = template.Templates.resolve(kind, T);
 
                 switch (resolved) {
+                    .@"n-ary" => |n_ary| {
+                        const new_bindings = n_ary.matches(expression, allocator);
+
+                        if (new_bindings) |b| {
+                            defer allocator.free(b);
+                            return n_ary.solve(expression, b, allocator);
+                        } else |_| {}
+                    },
+
                     .dynamic => |dynamic| {
-                        const new_bindings = if (@typeInfo(@TypeOf(dynamic.matches)).@"fn".params.len == 2) dynamic.matches(expression, allocator) else dynamic.matches(expression);
+                        const new_bindings = dynamic.matches(expression);
 
                         if (new_bindings) |b| return dynamic.solve(expression, b, allocator) else |_| {}
                     },
+
                     .structure => |structure| {
                         if (structure.matches(expression)) |b| {
                             return structure.solve(expression, b, allocator);
                         } else |_| {}
                     },
+
                     // this is a structural template
                     .identity => unreachable,
                 }
@@ -207,7 +220,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                 try solution.steps[1].after.clone(allocator),
                 try (Expression(T){ .number = ce + cf + de + df }).clone(allocator),
                 try std.fmt.allocPrint(allocator, "Add {d}, {d}, {d} and {d} together", .{ ce, cf, de, df }),
-                (try template.Templates.get(.@"core/number/n-ary/sum").module(T).dynamic.solve(solution.steps[1].after, solution.steps[1].after.function.arguments, allocator)).steps,
+                (try template.Templates.get(.@"core/number/n-ary/sum").module(T).@"n-ary".solve(solution.steps[1].after, solution.steps[1].after.function.arguments, allocator)).steps,
                 allocator,
             );
 

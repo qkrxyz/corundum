@@ -26,6 +26,7 @@ pub fn Data(comptime T: type) type {
         average: f64,
         mean: f64,
         std_dev: f64,
+        average_cycles: ?usize,
     };
 }
 
@@ -53,9 +54,11 @@ fn run(
         .dynamic => |dynamic| dynamic.name,
         .structure => |structure| structure.name,
         .identity => |identity| identity.name,
+        .@"n-ary" => |n_ary| n_ary.name,
     } else t(T).name, ITERATIONS);
 
     var times: [ITERATIONS]u64 = undefined;
+    var cycles: [ITERATIONS]usize = undefined;
 
     for (0..ITERATIONS) |i| {
         var arena = std.heap.ArenaAllocator.init(allocator);
@@ -65,20 +68,30 @@ fn run(
 
         var timer = try std.time.Timer.start();
 
+        const cycles_start = rdtsc();
+
         const structural = input.structural();
         const hash = input.hash();
 
         if (@typeInfo(@TypeOf(t)) == .@"struct") {
             switch (t.module(T)) {
+                .@"n-ary" => |n_ary| {
+                    const bindings = n_ary.matches(input, gpa);
+
+                    if (bindings) |b| {
+                        const solution = try n_ary.solve(input, b, gpa);
+                        std.mem.doNotOptimizeAway(solution.steps);
+                        solution.deinit(gpa);
+                        gpa.free(b);
+                    } else |_| {}
+                },
                 .dynamic => |dynamic| {
-                    const bindings = if (@typeInfo(@TypeOf(dynamic.matches)).@"fn".params.len == 2) dynamic.matches(input, gpa) else dynamic.matches(input);
+                    const bindings = dynamic.matches(input);
 
                     if (bindings) |b| {
                         const solution = try dynamic.solve(input, b, gpa);
                         std.mem.doNotOptimizeAway(solution.steps);
                         solution.deinit(gpa);
-
-                        if (@typeInfo(@TypeOf(dynamic.matches)).@"fn".params.len == 2) gpa.free(b);
                     } else |_| {}
                 },
                 .structure => |structure| {
@@ -105,9 +118,12 @@ fn run(
             } else |_| {}
         }
 
+        const cycles_end = rdtsc();
         const took = timer.read();
 
         times[i] = took;
+        cycles[i] = cycles_end - cycles_start;
+
         this.completeOne();
     }
 
@@ -165,6 +181,10 @@ fn run(
     const variance = variance_sum / @as(f64, @floatFromInt(filtered.len));
     const std_deviation = @sqrt(variance);
 
+    // cycles
+    var cycles_sum: usize = 0;
+    for (cycles) |x| cycles_sum += x;
+
     return Data(T){
         .kind = @intFromEnum(kind),
         .name = name,
@@ -173,7 +193,30 @@ fn run(
         .average = average,
         .mean = mean,
         .std_dev = std_deviation,
+        .average_cycles = if (builtin.target.cpu.arch.isX86()) cycles_sum / ITERATIONS else null,
     };
+}
+
+fn run_mt(
+    comptime T: type,
+    comptime kind: template.TemplatesKind,
+    input: *const expr.Expression(T),
+    name: []const u8,
+    progress: *std.Progress.Node,
+    allocator: std.mem.Allocator,
+    data: *[total_runs]Data(T),
+    idx: usize,
+) !void {
+    const result = try run(
+        T,
+        kind,
+        input,
+        name,
+        progress,
+        allocator,
+    );
+
+    data[idx] = result;
 }
 
 pub fn main() !void {
@@ -189,10 +232,30 @@ pub fn main() !void {
         _ = debug_allocator.deinit();
     };
 
+    var arguments = try std.process.argsWithAllocator(gpa);
+    _ = arguments.skip();
+
+    var singlethreaded = false;
+
+    if (arguments.next()) |argument| {
+        if (std.mem.eql(u8, "--singlethreaded", argument)) {
+            singlethreaded = true;
+        } else {
+            std.debug.print(
+                \\Test the performance of the corundum math engine.
+                \\
+                \\Options:
+                \\ --singlethreaded\t\tDon't spawn threads for templates - use this to get more realistic results
+            , .{});
+        }
+    }
+
     var data: [total_runs]Data(f64) = undefined;
     var idx: usize = 0;
 
     var progress = std.Progress.start(.{ .estimated_total_items = total_runs, .root_name = "Running benchmarks..." });
+
+    var handles: [total_runs]std.Thread = undefined;
 
     inline for (std.meta.fields(template.TemplatesKind)) |entry| {
         @setEvalBranchQuota((1 << 32) - 1);
@@ -201,19 +264,34 @@ pub fn main() !void {
             const testing_data = template.Templates.tests(kind, f64);
 
             for (testing_data.keys()) |key| {
-                data[idx] = try run(
-                    f64,
-                    kind,
-                    testing_data.get(key).?,
-                    key,
-                    &progress,
-                    gpa,
-                );
+                if (!singlethreaded) {
+                    const handle = try std.Thread.spawn(
+                        .{ .allocator = gpa },
+                        run_mt,
+                        .{
+                            f64, kind, testing_data.get(key).?, key, &progress, gpa, &data, idx,
+                        },
+                    );
+
+                    handles[idx] = handle;
+                } else {
+                    data[idx] = try run(
+                        f64,
+                        kind,
+                        testing_data.get(key).?,
+                        key,
+                        &progress,
+                        gpa,
+                    );
+                }
 
                 idx += 1;
             }
         }
     }
+
+    if (!singlethreaded) for (handles) |handle| handle.join();
+
     progress.end();
 
     // file size
@@ -300,19 +378,26 @@ pub fn main() !void {
                 continue :outer;
             };
 
-            const diff_avg = before_run.average - value.average;
+            const diff_avg = value.average - before_run.average;
             const percentage = (diff_avg / before_run.average) * 100;
-            std.debug.print("\x1b[1m{s}\x1b[0m [{s}] // {d:.2} μs, {d:.2} μs // \x1b[4m{d: <4.2}%\x1b[0m ({d} outliers){s}\n", .{
+            std.debug.print("\x1b[1m{s}\x1b[0m [{s}] // {d:.2} μs, {d:.2} μs // \x1b[4m{d: <4.2}%\x1b[0m ({d} outliers)", .{
                 @tagName(@as(template.TemplatesKind, @enumFromInt(value.kind))),
                 value.name,
-                value.average / 1000,
                 before_run.average / 1000,
+                value.average / 1000,
                 percentage,
                 value.outliers,
-
-                // discard run-to-run variance (500 ns)
-                if (diff_avg > 1000 and percentage > 10.0 and before_run.average > 5000) " \x1b[1;31mregressed\x1b[0m" else "",
             });
+
+            const before_cycles, const after_cycles = .{ before_run.average_cycles, value.average_cycles };
+
+            if (before_cycles != null and after_cycles != null) {
+                const diff_cycles = @as(isize, @intCast(after_cycles.?)) - @as(isize, @intCast(before_cycles.?));
+                const cycles_percentage = @as(f64, @floatFromInt(diff_cycles)) / @as(f64, @floatFromInt(before_run.average_cycles.?)) * 100.0;
+                std.debug.print(" // average {d}, {d} cycles/iter: \x1b[4m{d: <4.2}%\x1b[0m", .{ before_cycles.?, after_cycles.?, cycles_percentage });
+            }
+
+            std.debug.print("\n", .{});
         }
 
         const diff_size = @as(isize, @intCast(to_serialize.compressed)) - @as(isize, @intCast(before.compressed));
@@ -333,13 +418,33 @@ pub fn main() !void {
         std.debug.print("\x1b[1mTimestamp\x1b[0m {d}\n", .{to_serialize.timestamp});
         std.debug.print("\x1b[1mIterations\x1b[0m {d}\n", .{ITERATIONS});
         for (to_serialize.results) |run_data| {
-            std.debug.print("\x1b[1m{s}\x1b[0m [{s}] // {d:.2} μs ({d} outliers)\n", .{
+            std.debug.print("\x1b[1m{s}\x1b[0m [{s}] // {d:.2} μs ({d} outliers)", .{
                 @tagName(@as(template.TemplatesKind, @enumFromInt(run_data.kind))),
                 run_data.name,
                 run_data.average / 1000,
                 run_data.outliers,
             });
+
+            if (run_data.average_cycles) |cycles| {
+                std.debug.print(" // average {d} cycles/iter", .{cycles});
+            }
+
+            std.debug.print("\n", .{});
         }
         std.debug.print("\x1b[1mSize\x1b[0m {d:.2}/{d:.2} bytes\n", .{ to_serialize.uncompressed, to_serialize.compressed });
     }
+}
+
+inline fn rdtsc() usize {
+    comptime if (!builtin.target.cpu.arch.isX86()) return 0;
+
+    var a: u32 = undefined;
+    var b: u32 = undefined;
+    asm volatile ("rdtscp"
+        : [a] "={edx}" (a),
+          [b] "={eax}" (b),
+        :
+        : "ecx"
+    );
+    return (@as(u64, a) << 32) | b;
 }

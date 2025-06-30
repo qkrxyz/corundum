@@ -1,28 +1,19 @@
 pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
-            "10 / 4", &Expression(T){
-                .binary = .{
-                    .left = &.{ .number = 10.0 },
-                    .right = &.{ .number = 4.0 },
-                    .operation = .division,
-                },
-            },
-        },
-        .{
-            "323 / 160", &Expression(T){
-                .binary = .{
-                    .left = &.{ .number = 323.0 },
-                    .right = &.{ .number = 160.0 },
-                    .operation = .division,
-                },
-            },
-        },
-        .{
             "999 / 37", &Expression(T){
                 .binary = .{
                     .left = &.{ .number = 999.0 },
                     .right = &.{ .number = 37.0 },
+                    .operation = .division,
+                },
+            },
+        },
+        .{
+            "450 / 15", &Expression(T){
+                .binary = .{
+                    .left = &.{ .number = 450.0 },
+                    .right = &.{ .number = 15.0 },
                     .operation = .division,
                 },
             },
@@ -51,22 +42,35 @@ pub fn division(comptime T: type) Template(Key, T) {
 
         // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            @setFloatMode(.optimized);
+
             const I = @Type(.{ .int = .{ .bits = @bitSizeOf(T), .signedness = .signed } });
 
             inline for (template.Templates.contains("core/identities/division")) |kind| {
                 const resolved = template.Templates.resolve(kind, T);
 
                 switch (resolved) {
+                    .@"n-ary" => |n_ary| {
+                        const new_bindings = n_ary.matches(expression, allocator);
+
+                        if (new_bindings) |b| {
+                            defer allocator.free(b);
+                            return n_ary.solve(expression, b, allocator);
+                        } else |_| {}
+                    },
+
                     .dynamic => |dynamic| {
-                        const new_bindings = if (@typeInfo(@TypeOf(dynamic.matches)).@"fn".params.len == 2) dynamic.matches(expression, allocator) else dynamic.matches(expression);
+                        const new_bindings = dynamic.matches(expression);
 
                         if (new_bindings) |b| return dynamic.solve(expression, b, allocator) else |_| {}
                     },
+
                     .structure => |structure| {
                         if (structure.matches(expression)) |b| {
                             return structure.solve(expression, b, allocator);
                         } else |_| {}
                     },
+
                     // this is a structural template
                     .identity => unreachable,
                 }

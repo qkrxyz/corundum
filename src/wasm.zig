@@ -29,8 +29,20 @@ export fn solve(string: [*]u8, length: usize) u64 {
         inline for (corundum.template.Templates.all()) |t| {
             const value = corundum.template.Templates.get(t);
             switch (value.module(f64)) {
+                .@"n-ary" => |n_ary| {
+                    const bindings = n_ary.matches(expr, allocator);
+
+                    if (bindings) |b| {
+                        const solution = n_ary.solve(expr, b, allocator) catch @panic("out of memory");
+                        defer solution.deinit(allocator);
+                        defer allocator.free(b);
+
+                        std.zon.stringify.serializeArbitraryDepth(solution, .{}, output.writer()) catch @panic("out of memory");
+                        output.append('\n') catch @panic("out of memory");
+                    } else |_| {}
+                },
                 .dynamic => |dynamic| {
-                    const bindings = if (@typeInfo(@TypeOf(dynamic.matches)).@"fn".params.len == 2) dynamic.matches(expr, allocator) else dynamic.matches(expr);
+                    const bindings = dynamic.matches(expr);
 
                     if (bindings) |b| {
                         output.writer().print("{s}: ", .{dynamic.name}) catch @panic("out of memory");

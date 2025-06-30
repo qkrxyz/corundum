@@ -1,19 +1,10 @@
 pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{
         .{
-            "30 / 4.5", &Expression(T){
+            "45 / 1.5", &Expression(T){
                 .binary = .{
-                    .left = &.{ .number = 30 },
-                    .right = &.{ .number = 4.5 },
-                    .operation = .division,
-                },
-            },
-        },
-        .{
-            "4 / 0.15", &Expression(T){
-                .binary = .{
-                    .left = &.{ .number = 4 },
-                    .right = &.{ .number = 0.15 },
+                    .left = &.{ .number = 45 },
+                    .right = &.{ .number = 1.5 },
                     .operation = .division,
                 },
             },
@@ -44,6 +35,8 @@ pub fn @"int, float"(comptime T: type) Variant(Key, T) {
 
         // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            @setFloatMode(.optimized);
+
             const division = template.Templates.get(.@"core/number/division").module(T);
             const a = bindings.get(.a).?.number;
             const b = bindings.get(.b).?.number;

@@ -33,6 +33,8 @@ pub fn @"int, int"(comptime T: type) Variant(Key, T) {
 
         // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            @setFloatMode(.optimized);
+
             const a = bindings.get(.a).?.number;
             const b = bindings.get(.b).?.number;
 

@@ -31,6 +31,8 @@ pub fn addition(comptime T: type) Template(Key, T) {
 
         // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            @setFloatMode(.optimized);
+
             for (variants) |variant| {
                 const new_bindings = variant.matches(expression) catch continue;
 

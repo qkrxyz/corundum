@@ -608,8 +608,6 @@ test "divFloor(T).solve" {
     }
 }
 
-// TODO tests for a < b, a == b and negative inputs
-
 const std = @import("std");
 const testing = std.testing;
 

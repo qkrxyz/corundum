@@ -14,12 +14,12 @@ pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     });
 }
 
-pub const Key = usize;
+pub const Key = enum {};
 
 pub fn sum(comptime T: type) Template(Key, T) {
     const Impl = struct {
         // MARK: .matches()
-        fn matches(expression: *const Expression(T), allocator: std.mem.Allocator) anyerror!Bindings(Key, T) {
+        fn matches(expression: *const Expression(T), allocator: std.mem.Allocator) anyerror![]*const Expression(T) {
             if (expression.* != .function) return error.NotApplicable;
             if (!std.mem.eql(u8, expression.function.name, "add")) return error.WrongFunctionSignature;
             if (expression.function.arguments.len < 2) return error.NotEnoughArguments;
@@ -35,7 +35,9 @@ pub fn sum(comptime T: type) Template(Key, T) {
 
         // MARK: .solve()
         // TODO call @"core/number/addition" so that the identities are handled correctly
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: []*const Expression(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            @setFloatMode(.optimized);
+
             const solution = try Solution(T).init(bindings.len - 1, true, allocator);
 
             const initial_args = blk: {
@@ -106,12 +108,13 @@ pub fn sum(comptime T: type) Template(Key, T) {
     };
 
     // MARK: template
-    return Template(Key, T){ .dynamic = .{
-        .name = "N-ary function: sum of numbers",
-        .matches = Impl.matches,
-        .solve = Impl.solve,
-        .variants = &.{},
-    } };
+    return Template(Key, T){
+        .@"n-ary" = .{
+            .name = "N-ary function: sum of numbers",
+            .matches = Impl.matches,
+            .solve = Impl.solve,
+        },
+    };
 }
 
 // MARK: tests
@@ -121,7 +124,7 @@ test sum {
 
         const one_three_two = testingData(T).kvs.values[0];
 
-        const bindings = try Addition.dynamic.matches(one_three_two, testing.allocator);
+        const bindings = try Addition.@"n-ary".matches(one_three_two, testing.allocator);
         defer testing.allocator.free(bindings);
 
         const expected: []*const Expression(T) = @constCast(&[_]*const Expression(T){
@@ -140,10 +143,10 @@ test "sum(T).solve" {
 
         const one_three_two = testingData(T).get("1 + 3 + 2").?;
 
-        const bindings = try Addition.dynamic.matches(one_three_two, testing.allocator);
+        const bindings = try Addition.@"n-ary".matches(one_three_two, testing.allocator);
         defer testing.allocator.free(bindings);
 
-        const solution = try Addition.dynamic.solve(one_three_two, bindings, testing.allocator);
+        const solution = try Addition.@"n-ary".solve(one_three_two, bindings, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){

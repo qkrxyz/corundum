@@ -26,6 +26,8 @@ pub fn @"a - 0"(comptime T: type) Variant(Key, T) {
         }
 
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            @setFloatMode(.optimized);
+
             const a = bindings.get(.a).?;
 
             const solution = try Solution(T).init(1, true, allocator);

@@ -2,7 +2,7 @@ pub fn testingData(comptime T: type) std.StaticStringMap(*const Expression(T)) {
     return .initComptime(.{});
 }
 
-pub const Key = usize;
+pub const Key = enum {};
 
 pub fn subtraction(comptime T: type) Template(Key, T) {
     const Impl = struct {
@@ -35,7 +35,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
         }
 
         // MARK: .impl()
-        fn impl(expression: *const Expression(T), allocator: std.mem.Allocator, capacity: usize) anyerror!Bindings(Key, T) {
+        fn impl(expression: *const Expression(T), allocator: std.mem.Allocator, capacity: usize) anyerror![]*const Expression(T) {
             var bindings = try std.ArrayList(*const Expression(T)).initCapacity(allocator, capacity);
             errdefer bindings.deinit();
 
@@ -93,7 +93,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
         }
 
         // MARK: .matches()
-        fn matches(expression: *const Expression(T), allocator: std.mem.Allocator) anyerror!Bindings(Key, T) {
+        fn matches(expression: *const Expression(T), allocator: std.mem.Allocator) anyerror![]*const Expression(T) {
             if (expression.* != .binary) return error.NotApplicable;
 
             const capacity = try count(expression);
@@ -103,7 +103,7 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: []*const Expression(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             const solution = try Solution(T).init(1, false, allocator);
             solution.steps[0] = try Step(T).init(
                 try expression.clone(allocator),
@@ -122,18 +122,19 @@ pub fn subtraction(comptime T: type) Template(Key, T) {
     };
 
     // MARK: template
-    return Template(Key, T){ .dynamic = .{
-        .name = "N-ary function: subtraction",
-        .matches = Impl.matches,
-        .solve = Impl.solve,
-        .variants = &.{},
-    } };
+    return Template(Key, T){
+        .@"n-ary" = .{
+            .name = "N-ary function: subtraction",
+            .matches = Impl.matches,
+            .solve = Impl.solve,
+        },
+    };
 }
 
 // MARK: tests
 test subtraction {
     inline for (.{ f32, f64, f128 }) |T| {
-        const Addition = subtraction(T);
+        const Subtraction = subtraction(T);
 
         const one_three_two = Expression(T){ .binary = .{
             .left = &.{
@@ -147,7 +148,7 @@ test subtraction {
             .operation = .subtraction,
         } };
 
-        const bindings = try Addition.dynamic.matches(&one_three_two, testing.allocator);
+        const bindings = try Subtraction.@"n-ary".matches(&one_three_two, testing.allocator);
         defer testing.allocator.free(bindings);
 
         const expected: []*const Expression(T) = @constCast(&[_]*const Expression(T){
@@ -183,7 +184,7 @@ test "subtraction(T).matches(number, variable, fraction)" {
             },
         };
 
-        const bindings = try Subtraction.dynamic.matches(&one_x_pi_2, testing.allocator);
+        const bindings = try Subtraction.@"n-ary".matches(&one_x_pi_2, testing.allocator);
         defer testing.allocator.free(bindings);
 
         const expected: []*const Expression(T) = @constCast(&[_]*const Expression(T){
@@ -217,7 +218,7 @@ test "subtraction(T).matches(..., equation)" {
             },
         };
 
-        const bindings = Subtraction.dynamic.matches(&one_x_eql_1, testing.allocator);
+        const bindings = Subtraction.@"n-ary".matches(&one_x_eql_1, testing.allocator);
         try testing.expectError(error.BinaryEquation, bindings);
     }
 }
@@ -234,7 +235,7 @@ test "Subtraction(T).matches(..., boolean)" {
             },
         };
 
-        const bindings = Subtraction.dynamic.matches(&one_bool, testing.allocator);
+        const bindings = Subtraction.@"n-ary".matches(&one_bool, testing.allocator);
         try testing.expectError(error.BooleanArithmetic, bindings);
     }
 }
@@ -260,7 +261,7 @@ test "subtraction(T).matches(..., unary)" {
             .operation = .addition,
         } };
 
-        const bindings = try Subtraction.dynamic.matches(&one_three_negative_x, testing.allocator);
+        const bindings = try Subtraction.@"n-ary".matches(&one_three_negative_x, testing.allocator);
         defer testing.allocator.free(bindings);
 
         const expected: []*const Expression(T) = @constCast(&[_]*const Expression(T){
@@ -279,7 +280,7 @@ test "subtraction(T).matches(...) - not enough parameters/wrong structure" {
 
         const one = Expression(T){ .number = 3.14 };
 
-        const bindings = Subtraction.dynamic.matches(&one, testing.allocator);
+        const bindings = Subtraction.@"n-ary".matches(&one, testing.allocator);
         try testing.expectError(error.NotApplicable, bindings);
     }
 }

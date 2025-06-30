@@ -25,6 +25,8 @@ pub fn modulus(comptime T: type) Template(Key, T) {
         }
 
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            @setFloatMode(.optimized);
+
             const a = bindings.get(.a).?;
             const b = bindings.get(.b).?;
 

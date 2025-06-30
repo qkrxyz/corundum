@@ -39,6 +39,8 @@ pub fn @"float, int"(comptime T: type) Variant(Key, T) {
 
         // MARK: .solve()
         fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            @setFloatMode(.optimized);
+
             const I = @Type(.{ .int = .{ .bits = @bitSizeOf(T), .signedness = .unsigned } });
 
             const a, const b = .{ bindings.get(.a).?.number, bindings.get(.b).?.number };

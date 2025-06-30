@@ -307,6 +307,8 @@ pub fn build(b: *std.Build) !void {
 
     const run_perf = b.addRunArtifact(perf);
     run_perf.step.dependOn(b.getInstallStep());
+    if (b.args) |args| run_perf.addArgs(args);
+
     perf_step.dependOn(&run_perf.step);
 }
 
