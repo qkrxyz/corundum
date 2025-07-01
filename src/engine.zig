@@ -2,23 +2,23 @@ pub fn Engine(comptime T: type) type {
     return struct {
         const Self = @This();
 
-        expression: *const expr.Expression(T),
+        context: Context(T) = .default,
         allocator: std.mem.Allocator,
 
-        pub fn init(input: *const expr.Expression(T), allocator: std.mem.Allocator) Self {
-            Self.expression = input;
-
+        pub fn init(context: Context(T), allocator: std.mem.Allocator) Self {
             return Self{
-                .expression = input,
+                .context = context,
                 .allocator = allocator,
             };
         }
 
         pub fn run() !void {
-
+            unreachable;
         }
     };
 }
 
 const std = @import("std");
 const expr = @import("expr");
+
+pub const Context = @import("engine/context").Context;

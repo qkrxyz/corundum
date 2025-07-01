@@ -26,7 +26,8 @@ pub fn @"0 ÷ a"(comptime T: type) Template(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            _ = context;
             _ = bindings;
 
             const solution = try Solution(T).init(1, true, allocator);
@@ -47,7 +48,6 @@ pub fn @"0 ÷ a"(comptime T: type) Template(Key, T) {
         .name = "Division: 0 ÷ a",
         .matches = Impl.matches,
         .solve = Impl.solve,
-        .variants = &.{},
     } };
 }
 
@@ -92,7 +92,7 @@ test "0 ÷ a(T).solve" {
         const zero_div_x = testingData(T).get("0 / x").?;
 
         const bindings = try Division.dynamic.matches(zero_div_x);
-        const solution = try Division.dynamic.solve(zero_div_x, bindings, testing.allocator);
+        const solution = try Division.dynamic.solve(zero_div_x, bindings, .default, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
@@ -116,7 +116,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Template = template.Template;
 const Solution = template.Solution;

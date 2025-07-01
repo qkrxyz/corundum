@@ -26,7 +26,9 @@ pub fn @"-a ÷ -b"(comptime T: type) Template(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            _ = context;
+
             const a = switch (bindings.get(.a).?.*) {
                 .number => bindings.get(.a).?,
                 .unary => |unary| unary.operand,
@@ -64,7 +66,6 @@ pub fn @"-a ÷ -b"(comptime T: type) Template(Key, T) {
             .name = "Division: -a ÷ -b",
             .matches = Impl.matches,
             .solve = Impl.solve,
-            .variants = &.{},
         },
     };
 }
@@ -76,7 +77,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Template = template.Template;
 const Variant = template.Variant;

@@ -20,8 +20,6 @@ pub const Key = enum {
 };
 
 pub fn divFloor(comptime T: type) Template(Key, T) {
-    const variants = template.Templates.variants(.@"builtin/functions/divFloor", T);
-
     const Impl = struct {
         // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
@@ -63,12 +61,8 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
         // - 6900, 7130, 7360, 7590, 7360 | 300, 310, 320, 330, 320
         // - 7360, 7383, 7406, 7383       | 320, 321, 322, 321
         // Since we can't increment the multiplier by a value lower than 1, we have our result.
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
-            for (variants) |variant| {
-                const new_bindings = variant.matches(expression) catch continue;
-
-                return variant.solve(expression, new_bindings, allocator);
-            }
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            if (try context.find_variants(.@"builtin/functions/divFloor", expression, allocator)) |solution| return solution;
 
             const I = @Type(.{ .int = .{ .bits = @bitSizeOf(T), .signedness = .signed } });
 
@@ -324,7 +318,6 @@ pub fn divFloor(comptime T: type) Template(Key, T) {
         },
         .matches = Impl.matches,
         .solve = Impl.solve,
-        .variants = &.{},
     } };
 }
 
@@ -360,7 +353,7 @@ test "divFloor(T).solve" {
         const function = testingData(T).get("7393 / 23").?;
 
         const bindings = try Division.structure.matches(function);
-        const solution = try Division.structure.solve(function, bindings, testing.allocator);
+        const solution = try Division.structure.solve(function, bindings, .default, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
@@ -613,7 +606,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Template = template.Template;
 const Variant = template.Variant;

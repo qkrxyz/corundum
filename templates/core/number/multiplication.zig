@@ -16,8 +16,6 @@ pub const Key = enum {
 };
 
 pub fn multiplication(comptime T: type) Template(Key, T) {
-    const variants = @constCast(&template.Templates.variants(.@"core/number/multiplication", T));
-
     const Impl = struct {
         // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
@@ -30,44 +28,11 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             @setFloatMode(.optimized);
 
-            inline for (template.Templates.contains("core/identities/multiplication")) |kind| {
-                const resolved = template.Templates.resolve(kind, T);
-
-                switch (resolved) {
-                    .@"n-ary" => |n_ary| {
-                        const new_bindings = n_ary.matches(expression, allocator);
-
-                        if (new_bindings) |b| {
-                            defer allocator.free(b);
-                            return n_ary.solve(expression, b, allocator);
-                        } else |_| {}
-                    },
-
-                    .dynamic => |dynamic| {
-                        const new_bindings = dynamic.matches(expression);
-
-                        if (new_bindings) |b| return dynamic.solve(expression, b, allocator) else |_| {}
-                    },
-
-                    .structure => |structure| {
-                        if (structure.matches(expression)) |b| {
-                            return structure.solve(expression, b, allocator);
-                        } else |_| {}
-                    },
-
-                    // this is a structural template
-                    .identity => unreachable,
-                }
-            }
-
-            for (variants) |variant| {
-                const new_bindings = variant.matches(expression) catch continue;
-
-                return variant.solve(expression, new_bindings, allocator);
-            }
+            if (try context.find_templates("core/identities/multiplication", expression, allocator)) |solution| return solution;
+            if (try context.find_variants(.@"core/number/multiplication", expression, allocator)) |solution| return solution;
 
             const a = bindings.get(.a).?.number;
             const b = bindings.get(.b).?.number;
@@ -161,6 +126,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                             .a = solution.steps[0].after.function.arguments[0].binary.right,
                             .b = solution.steps[0].after.function.arguments[0].binary.left,
                         }),
+                        context,
                         allocator,
                     );
                     substeps[0] = solution_one.steps[0];
@@ -177,6 +143,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                                 .a = solution.steps[0].after.function.arguments[1].binary.right,
                                 .b = solution.steps[0].after.function.arguments[1].binary.left,
                             }),
+                            context,
                             allocator,
                         )).steps,
                     }).clone(allocator);
@@ -191,6 +158,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                                 .a = solution.steps[0].after.function.arguments[2].binary.left,
                                 .b = solution.steps[0].after.function.arguments[2].binary.right,
                             }),
+                            context,
                             allocator,
                         )).steps,
                     }).clone(allocator);
@@ -206,6 +174,7 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                                 .a = solution.steps[0].after.function.arguments[3].binary.left,
                                 .b = solution.steps[0].after.function.arguments[3].binary.right,
                             }),
+                            context,
                             allocator,
                         )).steps,
                     }).clone(allocator);
@@ -220,7 +189,12 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
                 try solution.steps[1].after.clone(allocator),
                 try (Expression(T){ .number = ce + cf + de + df }).clone(allocator),
                 try std.fmt.allocPrint(allocator, "Add {d}, {d}, {d} and {d} together", .{ ce, cf, de, df }),
-                (try template.Templates.get(.@"core/number/n-ary/sum").module(T).@"n-ary".solve(solution.steps[1].after, solution.steps[1].after.function.arguments, allocator)).steps,
+                (try template.Templates.get(.@"core/number/n-ary/sum").module(T).@"n-ary".solve(
+                    solution.steps[1].after,
+                    solution.steps[1].after.function.arguments,
+                    context,
+                    allocator,
+                )).steps,
                 allocator,
             );
 
@@ -240,7 +214,6 @@ pub fn multiplication(comptime T: type) Template(Key, T) {
             },
             .matches = Impl.matches,
             .solve = Impl.solve,
-            .variants = variants,
         },
     };
 }
@@ -287,7 +260,7 @@ test "multiplication(T).solve" {
         const expression = testingData(T).get("4.5 * 1.5").?;
 
         const bindings = try Multiplication.structure.matches(expression);
-        const solution = try Multiplication.structure.solve(expression, bindings, testing.allocator);
+        const solution = try Multiplication.structure.solve(expression, bindings, .default, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
@@ -541,7 +514,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Template = template.Template;
 const Variant = template.Variant;

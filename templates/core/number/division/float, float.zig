@@ -34,7 +34,7 @@ pub fn @"float, float"(comptime T: type) Variant(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             @setFloatMode(.optimized);
 
             const division = template.Templates.get(.@"core/number/division").module(T);
@@ -59,7 +59,7 @@ pub fn @"float, float"(comptime T: type) Variant(Key, T) {
             } }, Bindings(Key, T).init(.{
                 .a = &.{ .number = a_multiplied },
                 .b = &.{ .number = b_multiplied },
-            }), allocator);
+            }), context, allocator);
 
             const solution = try Solution(T).init(division_solution.steps.len + 1, true, allocator);
 
@@ -103,7 +103,7 @@ test @"float, float" {
         const four_half_div_zero_fifteen = testingData(T).get("4.5 / 0.15").?;
 
         const bindings = try Division.matches(four_half_div_zero_fifteen);
-        const solution = try Division.solve(four_half_div_zero_fifteen, bindings, testing.allocator);
+        const solution = try Division.solve(four_half_div_zero_fifteen, bindings, .default, testing.allocator);
         defer solution.deinit(testing.allocator);
     }
 }
@@ -113,7 +113,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Variant = template.Variant;
 const Solution = template.Solution;

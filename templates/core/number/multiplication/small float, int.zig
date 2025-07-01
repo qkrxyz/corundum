@@ -42,7 +42,8 @@ pub fn @"small float, int"(comptime T: type) Variant(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            _ = context;
             @setFloatMode(.optimized);
 
             const I = @Type(.{ .int = .{ .bits = @bitSizeOf(T), .signedness = .unsigned } });
@@ -144,7 +145,7 @@ test "small float, int(T).solve" {
     const half_of_three = testingData(f64).get("0.5 * 3.0").?;
 
     const bindings = try Multiplication.matches(half_of_three);
-    const solution = try Multiplication.solve(half_of_three, bindings, testing.allocator);
+    const solution = try Multiplication.solve(half_of_three, bindings, .default, testing.allocator);
     defer solution.deinit(testing.allocator);
 
     const expected = Solution(f64){
@@ -173,7 +174,9 @@ test "small float, int(T).solve" {
 
 const std = @import("std");
 const testing = std.testing;
+const engine = @import("engine");
 
+const Context = engine.Context;
 const expr = @import("expr");
 const template = @import("template");
 

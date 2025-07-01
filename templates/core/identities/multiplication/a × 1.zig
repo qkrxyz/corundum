@@ -34,7 +34,9 @@ pub fn @"a × 1"(comptime T: type) Template(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            _ = context;
+
             const a = bindings.get(.a).?;
 
             const solution = try Solution(T).init(1, true, allocator);
@@ -55,7 +57,6 @@ pub fn @"a × 1"(comptime T: type) Template(Key, T) {
         .name = "Multiplication: a × 1",
         .matches = Impl.matches,
         .solve = Impl.solve,
-        .variants = &.{},
     } };
 }
 
@@ -99,7 +100,7 @@ test "a × 1(T).solve" {
         const x_times_one = testingData(T).get("x * 1").?;
 
         const bindings = try Multiplication.dynamic.matches(x_times_one);
-        const solution = try Multiplication.dynamic.solve(x_times_one, bindings, testing.allocator);
+        const solution = try Multiplication.dynamic.solve(x_times_one, bindings, .default, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
@@ -123,7 +124,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Template = template.Template;
 const Solution = template.Solution;

@@ -23,17 +23,8 @@ pub fn @"small float, small float"(comptime T: type) Variant(Key, T) {
             return bindings;
         }
 
-        fn @"10^-x"(x: usize) T {
-            var result: T = 10.0;
-            for (0..x + 1) |_| {
-                result /= 10.0;
-            }
-
-            return result;
-        }
-
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             @setFloatMode(.optimized);
 
             const a = bindings.get(.a).?.number;
@@ -66,7 +57,7 @@ pub fn @"small float, small float"(comptime T: type) Variant(Key, T) {
             // MARK: shift
             solution.steps[1] = try Step(T).init(
                 try solution.steps[0].after.clone(allocator),
-                try (Expression(T){ .number = @"10^-x"(a_str[2..].len + b_str[2..].len) * multiplied }).clone(allocator),
+                try (Expression(T){ .number = context.functions.npow10(a_str[2..].len + b_str[2..].len) * multiplied }).clone(allocator),
                 try std.fmt.allocPrint(allocator, "Make the result have {d} decimal places", .{a_str[2..].len + b_str[2..].len}),
                 &.{},
                 allocator,
@@ -92,7 +83,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Variant = template.Variant;
 const Solution = template.Solution;

@@ -25,7 +25,8 @@ pub fn @"a - 0"(comptime T: type) Variant(Key, T) {
             return bindings;
         }
 
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            _ = context;
             @setFloatMode(.optimized);
 
             const a = bindings.get(.a).?;
@@ -89,7 +90,7 @@ test "a - 0(T).solve" {
         const one_minus_zero = testingData(T).get("1 - 0").?;
 
         const bindings = try Subtraction.matches(one_minus_zero);
-        const solution = try Subtraction.solve(one_minus_zero, bindings, testing.allocator);
+        const solution = try Subtraction.solve(one_minus_zero, bindings, .default, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
@@ -113,7 +114,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Variant = template.Variant;
 const Solution = template.Solution;

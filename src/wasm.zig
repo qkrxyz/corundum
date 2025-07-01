@@ -33,7 +33,7 @@ export fn solve(string: [*]u8, length: usize) u64 {
                     const bindings = n_ary.matches(expr, allocator);
 
                     if (bindings) |b| {
-                        const solution = n_ary.solve(expr, b, allocator) catch @panic("out of memory");
+                        const solution = n_ary.solve(expr, b, .default, allocator) catch @panic("out of memory");
                         defer solution.deinit(allocator);
                         defer allocator.free(b);
 
@@ -46,7 +46,7 @@ export fn solve(string: [*]u8, length: usize) u64 {
 
                     if (bindings) |b| {
                         output.writer().print("{s}: ", .{dynamic.name}) catch @panic("out of memory");
-                        const solution = dynamic.solve(expr, b, allocator) catch @panic("out of memory");
+                        const solution = dynamic.solve(expr, b, .default, allocator) catch @panic("out of memory");
                         defer solution.deinit(allocator);
 
                         std.zon.stringify.serializeArbitraryDepth(solution, .{}, output.writer()) catch @panic("out of memory");
@@ -60,7 +60,7 @@ export fn solve(string: [*]u8, length: usize) u64 {
                         if (structure.matches(expr)) |bindings| {
                             output.writer().print("{s}: ", .{structure.name}) catch @panic("out of memory");
 
-                            const solution = structure.solve(expr, bindings, allocator) catch @panic("out of memory");
+                            const solution = structure.solve(expr, bindings, .default, allocator) catch @panic("out of memory");
                             defer solution.deinit(allocator);
 
                             std.zon.stringify.serializeArbitraryDepth(solution, .{}, output.writer()) catch @panic("out of memory");
@@ -74,7 +74,7 @@ export fn solve(string: [*]u8, length: usize) u64 {
                     if (hash == comptime identity.ast.hash()) {
                         output.writer().print("{s}: ", .{identity.name}) catch @panic("out of memory");
 
-                        const solution = identity.proof();
+                        const solution = identity.proof(.default);
                         std.zon.stringify.serializeArbitraryDepth(solution, .{}, output.writer()) catch @panic("out of memory");
                         output.append('\n') catch @panic("out of memory");
                     } else {

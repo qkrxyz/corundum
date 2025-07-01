@@ -27,8 +27,6 @@ pub const Key = enum {
 };
 
 pub fn division(comptime T: type) Template(Key, T) {
-    const variants = @constCast(&template.Templates.variants(.@"core/number/division", T));
-
     const Impl = struct {
         // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
@@ -41,46 +39,13 @@ pub fn division(comptime T: type) Template(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             @setFloatMode(.optimized);
 
             const I = @Type(.{ .int = .{ .bits = @bitSizeOf(T), .signedness = .signed } });
 
-            inline for (template.Templates.contains("core/identities/division")) |kind| {
-                const resolved = template.Templates.resolve(kind, T);
-
-                switch (resolved) {
-                    .@"n-ary" => |n_ary| {
-                        const new_bindings = n_ary.matches(expression, allocator);
-
-                        if (new_bindings) |b| {
-                            defer allocator.free(b);
-                            return n_ary.solve(expression, b, allocator);
-                        } else |_| {}
-                    },
-
-                    .dynamic => |dynamic| {
-                        const new_bindings = dynamic.matches(expression);
-
-                        if (new_bindings) |b| return dynamic.solve(expression, b, allocator) else |_| {}
-                    },
-
-                    .structure => |structure| {
-                        if (structure.matches(expression)) |b| {
-                            return structure.solve(expression, b, allocator);
-                        } else |_| {}
-                    },
-
-                    // this is a structural template
-                    .identity => unreachable,
-                }
-            }
-
-            for (variants) |variant| {
-                const new_bindings = variant.matches(expression) catch continue;
-
-                return variant.solve(expression, new_bindings, allocator);
-            }
+            if (try context.find_templates("core/identities/division", expression, allocator)) |solution| return solution;
+            if (try context.find_variants(.@"core/number/division", expression, allocator)) |solution| return solution;
 
             // guaranteed to be integers
             const a: I = @intFromFloat(bindings.get(.a).?.number);
@@ -104,7 +69,7 @@ pub fn division(comptime T: type) Template(Key, T) {
                 .body = null,
             } };
 
-            const div_floor_solution = try divFloor.module(T).structure.solve(&div_floor_expression, new_bindings, allocator);
+            const div_floor_solution = try divFloor.module(T).structure.solve(&div_floor_expression, new_bindings, context, allocator);
 
             solution.steps[0] = try Step(T).init(
                 try div_floor_expression.clone(allocator),
@@ -202,6 +167,7 @@ pub fn division(comptime T: type) Template(Key, T) {
                         .a = &.{ .number = @floatFromInt(remainder) },
                         .b = &.{ .number = @floatFromInt(b_abs) },
                     }),
+                    context,
                     allocator,
                 );
 
@@ -262,7 +228,7 @@ pub fn division(comptime T: type) Template(Key, T) {
 
                 remainder -= digit * b_abs;
 
-                const result = decimal + @as(T, @floatFromInt(digit)) * @"10^-x"(trailing_zeroes + i);
+                const result = decimal + @as(T, @floatFromInt(digit)) * context.functions.npow10(trailing_zeroes + i);
                 try substeps.append(try Step(T).init(
                     try (Expression(T){ .number = decimal }).clone(allocator),
                     try (Expression(T){ .number = result }).clone(allocator),
@@ -287,15 +253,6 @@ pub fn division(comptime T: type) Template(Key, T) {
 
             return solution;
         }
-
-        fn @"10^-x"(x: usize) T {
-            var result: T = 10.0;
-            for (0..x + 1) |_| {
-                result /= 10.0;
-            }
-
-            return result;
-        }
     };
 
     // MARK: template
@@ -311,7 +268,6 @@ pub fn division(comptime T: type) Template(Key, T) {
             },
             .matches = Impl.matches,
             .solve = Impl.solve,
-            .variants = variants,
         },
     };
 }
@@ -323,7 +279,7 @@ test division {
         const four_fifty_div_fifteen = testingData(T).get("450 / 15").?;
 
         const bindings = try Division.structure.matches(four_fifty_div_fifteen);
-        const solution = try Division.structure.solve(four_fifty_div_fifteen, bindings, testing.allocator);
+        const solution = try Division.structure.solve(four_fifty_div_fifteen, bindings, .default, testing.allocator);
         defer solution.deinit(testing.allocator);
     }
 }
@@ -333,7 +289,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Template = template.Template;
 const Variant = template.Variant;

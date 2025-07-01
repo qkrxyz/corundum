@@ -62,7 +62,7 @@ pub fn Template(comptime Key: type, comptime T: type) type {
         identity: struct {
             name: []const u8,
             ast: Expression(T),
-            proof: fn () std.mem.Allocator.Error!Solution(T),
+            proof: fn (Context(T)) std.mem.Allocator.Error!Solution(T),
         },
 
         /// A mathematical template that allows for templated variables of a given type.
@@ -82,8 +82,7 @@ pub fn Template(comptime Key: type, comptime T: type) type {
             name: []const u8,
             ast: Expression(T),
             matches: fn (*const Expression(T)) anyerror!Bindings(Key, T),
-            solve: fn (*const Expression(T), Bindings(Key, T), std.mem.Allocator) std.mem.Allocator.Error!Solution(T),
-            variants: []Variant(Key, T),
+            solve: fn (*const Expression(T), Bindings(Key, T), Context(T), std.mem.Allocator) std.mem.Allocator.Error!Solution(T),
         },
 
         /// A dynamic template that doesn't have a concrete representation.
@@ -99,15 +98,14 @@ pub fn Template(comptime Key: type, comptime T: type) type {
         dynamic: struct {
             name: []const u8,
             matches: fn (*const Expression(T)) anyerror!Bindings(Key, T),
-            solve: fn (*const Expression(T), Bindings(Key, T), std.mem.Allocator) std.mem.Allocator.Error!Solution(T),
-            variants: []Variant(Key, T),
+            solve: fn (*const Expression(T), Bindings(Key, T), Context(T), std.mem.Allocator) std.mem.Allocator.Error!Solution(T),
         },
 
         /// A template for an n-ary (variadic) function.
         @"n-ary": struct {
             name: []const u8,
             matches: fn (*const Expression(T), std.mem.Allocator) anyerror![]*const Expression(T),
-            solve: fn (*const Expression(T), []*const Expression(T), std.mem.Allocator) std.mem.Allocator.Error!Solution(T),
+            solve: fn (*const Expression(T), []*const Expression(T), Context(T), std.mem.Allocator) std.mem.Allocator.Error!Solution(T),
         },
     };
 }
@@ -115,12 +113,15 @@ pub fn Template(comptime Key: type, comptime T: type) type {
 const std = @import("std");
 
 const expr = @import("expr");
+const engine = @import("engine");
 const templates = @import("templates");
 
 pub const Templates = templates.templates;
 pub const TemplatesKind = templates.Kind;
 
 const Expression = expr.Expression;
+const Context = engine.Context;
+
 pub const Solution = @import("template/solution").Solution;
 pub const Step = @import("template/step").Step;
 pub const Variant = @import("template/variant").Variant;

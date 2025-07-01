@@ -15,8 +15,9 @@ pub fn length(comptime T: type) Template(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             _ = bindings;
+            _ = context;
             const len = expression.function.arguments.len;
 
             const solution = try Solution(T).init(1, false, allocator);
@@ -38,7 +39,6 @@ pub fn length(comptime T: type) Template(Key, T) {
             .name = "N-ary function: length",
             .matches = Impl.matches,
             .solve = Impl.solve,
-            .variants = &.{},
         },
     };
 }
@@ -59,7 +59,7 @@ test length {
 
             const bindings = try Length.dynamic.matches(&avg);
 
-            const solution = try Length.dynamic.solve(&avg, bindings, testing.allocator);
+            const solution = try Length.dynamic.solve(&avg, bindings, .default, testing.allocator);
             defer solution.deinit(testing.allocator);
 
             try testing.expectEqual(i, solution.steps[0].after.number);
@@ -72,7 +72,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Template = template.Template;
 const Variant = template.Variant;

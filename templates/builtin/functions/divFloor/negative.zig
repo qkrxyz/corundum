@@ -31,7 +31,7 @@ pub fn negative(comptime T: type) Variant(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             _ = expression;
 
             const divFloor = template.Templates.get(.@"builtin/functions/divFloor").module(T);
@@ -53,6 +53,7 @@ pub fn negative(comptime T: type) Variant(Key, T) {
                     .a = &.{ .number = @abs(a) },
                     .b = &.{ .number = @abs(b) },
                 }),
+                context,
                 allocator,
             );
 
@@ -94,7 +95,7 @@ test negative {
         const nine_div_minus_five = testingData(T).get("9 / -5").?;
 
         const bindings = try Division.matches(nine_div_minus_five);
-        const solution = try Division.solve(nine_div_minus_five, bindings, testing.allocator);
+        const solution = try Division.solve(nine_div_minus_five, bindings, .default, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
@@ -177,7 +178,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Template = template.Template;
 const Variant = template.Variant;

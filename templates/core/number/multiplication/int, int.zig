@@ -32,7 +32,8 @@ pub fn @"int, int"(comptime T: type) Variant(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            _ = context;
             @setFloatMode(.optimized);
 
             const a = bindings.get(.a).?.number;
@@ -88,7 +89,7 @@ test "int, int(T).solve" {
     const two_times_three = testingData(f64).get("2 * 3").?;
 
     const bindings = try Multiplication.matches(two_times_three);
-    const solution = try Multiplication.solve(two_times_three, bindings, testing.allocator);
+    const solution = try Multiplication.solve(two_times_three, bindings, .default, testing.allocator);
     defer solution.deinit(testing.allocator);
 
     const expected = Solution(f64){
@@ -111,7 +112,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Variant = template.Variant;
 const Solution = template.Solution;

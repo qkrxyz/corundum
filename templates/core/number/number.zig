@@ -19,7 +19,9 @@ pub fn number(comptime T: type) Template(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            _ = context;
+
             const solution = try Solution(T).init(1, true, allocator);
             solution.steps[0] = try Step(T).init(
                 try expression.clone(allocator),
@@ -40,7 +42,6 @@ pub fn number(comptime T: type) Template(Key, T) {
             .ast = Expression(T){ .templated = .number },
             .matches = Impl.matches,
             .solve = Impl.solve,
-            .variants = &.{},
         },
     };
 }
@@ -69,7 +70,7 @@ test "number(T).solve" {
 
     const bindings = try Number.structure.matches(one);
 
-    const solution = try Number.structure.solve(one, bindings, testing.allocator);
+    const solution = try Number.structure.solve(one, bindings, .default, testing.allocator);
     defer solution.deinit(testing.allocator);
 
     const expected: Solution(f64) = Solution(f64){
@@ -92,7 +93,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Template = template.Template;
 const Solution = template.Solution;

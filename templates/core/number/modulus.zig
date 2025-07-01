@@ -24,7 +24,7 @@ pub fn modulus(comptime T: type) Template(Key, T) {
             });
         }
 
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             @setFloatMode(.optimized);
 
             const a = bindings.get(.a).?;
@@ -33,14 +33,19 @@ pub fn modulus(comptime T: type) Template(Key, T) {
             const solution = try Solution(T).init(2, true, allocator);
 
             const divFloor = template.Templates.get(.@"builtin/functions/divFloor");
-            const multiplier = try divFloor.module(T).structure.solve(&.{ .function = .{
-                .name = "divFloor",
-                .arguments = @constCast(&[_]*const Expression(T){ a, b }),
-                .body = null,
-            } }, Bindings(divFloor.key, T).init(.{
-                .a = a,
-                .b = b,
-            }), allocator);
+            const multiplier = try divFloor.module(T).structure.solve(
+                &.{ .function = .{
+                    .name = "divFloor",
+                    .arguments = @constCast(&[_]*const Expression(T){ a, b }),
+                    .body = null,
+                } },
+                Bindings(divFloor.key, T).init(.{
+                    .a = a,
+                    .b = b,
+                }),
+                context,
+                allocator,
+            );
 
             solution.steps[0] = try Step(T).init(
                 try expression.clone(allocator),
@@ -52,16 +57,21 @@ pub fn modulus(comptime T: type) Template(Key, T) {
 
             // TODO extract the "negative" case into a different variant, and handle this subtraction accordingly (+1 step, or simply have it as a substep)
             const subtraction = template.Templates.get(.@"core/number/subtraction");
-            const result = try subtraction.module(T).structure.solve(&.{
-                .binary = .{
-                    .left = a,
-                    .right = solution.steps[0].after,
-                    .operation = .subtraction,
+            const result = try subtraction.module(T).structure.solve(
+                &.{
+                    .binary = .{
+                        .left = a,
+                        .right = solution.steps[0].after,
+                        .operation = .subtraction,
+                    },
                 },
-            }, Bindings(subtraction.key, T).init(.{
-                .a = a,
-                .b = solution.steps[0].after,
-            }), allocator);
+                Bindings(subtraction.key, T).init(.{
+                    .a = a,
+                    .b = solution.steps[0].after,
+                }),
+                context,
+                allocator,
+            );
 
             solution.steps[1] = result.steps[0];
             allocator.free(result.steps);
@@ -81,7 +91,6 @@ pub fn modulus(comptime T: type) Template(Key, T) {
         },
         .matches = Impl.matches,
         .solve = Impl.solve,
-        .variants = &.{},
     } };
 }
 
@@ -92,7 +101,7 @@ test modulus {
         const ten_mod_four = testingData(T).get("10 % 4").?;
 
         const bindings = try Modulus.structure.matches(ten_mod_four);
-        const solution = try Modulus.structure.solve(ten_mod_four, bindings, testing.allocator);
+        const solution = try Modulus.structure.solve(ten_mod_four, bindings, .default, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
@@ -204,7 +213,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Template = template.Template;
 const Variant = template.Variant;

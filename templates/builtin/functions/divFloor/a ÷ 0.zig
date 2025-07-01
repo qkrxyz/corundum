@@ -28,8 +28,9 @@ pub fn @"a ÷ 0"(comptime T: type) Variant(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             _ = bindings;
+            _ = context;
 
             const solution = try Solution(T).init(1, true, allocator);
             solution.steps[0] = try Step(T).init(
@@ -69,7 +70,7 @@ test @"a ÷ 0" {
         const twenty_four_div_0 = testingData(T).get("24 / 0").?;
 
         const bindings = try Division.matches(twenty_four_div_0);
-        const solution = try Division.solve(twenty_four_div_0, bindings, testing.allocator);
+        const solution = try Division.solve(twenty_four_div_0, bindings, .default, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
@@ -95,9 +96,11 @@ test @"a ÷ 0" {
 const std = @import("std");
 const testing = std.testing;
 
+const engine = @import("engine");
 const expr = @import("expr");
 const template = @import("template");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Template = template.Template;
 const Variant = template.Variant;

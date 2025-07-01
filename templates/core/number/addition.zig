@@ -16,8 +16,6 @@ pub const Key = enum {
 };
 
 pub fn addition(comptime T: type) Template(Key, T) {
-    const variants = @constCast(&template.Templates.variants(.@"core/number/addition", T));
-
     const Impl = struct {
         // MARK: .matches()
         fn matches(expression: *const Expression(T)) anyerror!Bindings(Key, T) {
@@ -30,14 +28,10 @@ pub fn addition(comptime T: type) Template(Key, T) {
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             @setFloatMode(.optimized);
 
-            for (variants) |variant| {
-                const new_bindings = variant.matches(expression) catch continue;
-
-                return variant.solve(expression, new_bindings, allocator);
-            }
+            if (try context.find_variants(.@"core/number/addition", expression, allocator)) |solution| return solution;
 
             const a = bindings.get(.a).?.number;
             const b = bindings.get(.b).?.number;
@@ -68,7 +62,6 @@ pub fn addition(comptime T: type) Template(Key, T) {
             },
             .matches = Impl.matches,
             .solve = Impl.solve,
-            .variants = variants,
         },
     };
 }
@@ -101,7 +94,7 @@ test "addition(T).solve" {
     const one_plus_two = testingData(f64).get("1 + 2").?;
 
     const bindings = try Addition.structure.matches(one_plus_two);
-    const solution = try Addition.structure.solve(one_plus_two, bindings, testing.allocator);
+    const solution = try Addition.structure.solve(one_plus_two, bindings, .default, testing.allocator);
     defer solution.deinit(testing.allocator);
 
     const expected = Solution(f64){
@@ -124,7 +117,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Template = template.Template;
 const Solution = template.Solution;

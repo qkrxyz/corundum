@@ -79,7 +79,7 @@ fn run(
                     const bindings = n_ary.matches(input, gpa);
 
                     if (bindings) |b| {
-                        const solution = try n_ary.solve(input, b, gpa);
+                        const solution = try n_ary.solve(input, b, .default, gpa);
                         std.mem.doNotOptimizeAway(solution.steps);
                         solution.deinit(gpa);
                         gpa.free(b);
@@ -89,7 +89,7 @@ fn run(
                     const bindings = dynamic.matches(input);
 
                     if (bindings) |b| {
-                        const solution = try dynamic.solve(input, b, gpa);
+                        const solution = try dynamic.solve(input, b, .default, gpa);
                         std.mem.doNotOptimizeAway(solution.steps);
                         solution.deinit(gpa);
                     } else |_| {}
@@ -97,7 +97,7 @@ fn run(
                 .structure => |structure| {
                     if (structural == comptime structure.ast.structural()) {
                         if (structure.matches(input)) |bindings| {
-                            const solution = try structure.solve(input, bindings, gpa);
+                            const solution = try structure.solve(input, bindings, .default, gpa);
                             std.mem.doNotOptimizeAway(solution.steps);
                             solution.deinit(gpa);
                         } else |_| {}
@@ -105,14 +105,14 @@ fn run(
                 },
                 .identity => |identity| {
                     if (hash == comptime identity.ast.hash()) {
-                        const solution = identity.proof();
+                        const solution = identity.proof(.default);
                         std.mem.doNotOptimizeAway(solution.steps);
                     }
                 },
             }
         } else {
             if (t(T).matches(input)) |bindings| {
-                const solution = try t(T).solve(input, bindings, gpa);
+                const solution = try t(T).solve(input, bindings, .default, gpa);
                 std.mem.doNotOptimizeAway(solution.steps);
                 solution.deinit(gpa);
             } else |_| {}

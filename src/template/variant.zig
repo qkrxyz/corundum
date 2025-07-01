@@ -10,8 +10,8 @@ pub fn Variant(comptime Key: type, comptime T: type) type {
 
     return struct {
         name: []const u8,
-        matches: *const fn (*const Expression(T)) anyerror!Bindings(Key, T),
-        solve: *const fn (*const Expression(T), Bindings(Key, T), std.mem.Allocator) std.mem.Allocator.Error!Solution(T),
+        matches: fn (*const Expression(T)) anyerror!Bindings(Key, T),
+        solve: fn (*const Expression(T), Bindings(Key, T), Context(T), std.mem.Allocator) std.mem.Allocator.Error!Solution(T),
         score: usize,
     };
 }
@@ -19,7 +19,9 @@ pub fn Variant(comptime Key: type, comptime T: type) type {
 const std = @import("std");
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Template = template.Template;
 const Bindings = template.Bindings;
 const Solution = template.Solution;

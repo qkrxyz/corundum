@@ -12,10 +12,11 @@ pub fn sqrt(comptime T: type) Template(Key, T) {
             });
         }
 
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
             const a = bindings.get(.a).?;
             _ = a;
             _ = expression;
+            _ = context;
 
             const solution = try Solution(T).init(1, true, allocator);
             return solution;
@@ -34,7 +35,6 @@ pub fn sqrt(comptime T: type) Template(Key, T) {
             },
             .matches = Impl.matches,
             .solve = Impl.solve,
-            .variants = &.{},
         },
     };
 }
@@ -44,7 +44,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Template = template.Template;
 const Variant = template.Variant;

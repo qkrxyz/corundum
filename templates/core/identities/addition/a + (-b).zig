@@ -25,30 +25,39 @@ pub fn @"a + (-b)"(comptime T: type) Template(Key, T) {
             if (expression.* != .binary) return error.NotApplicable;
             if (expression.binary.operation != .addition) return error.NotApplicable;
 
-            if ((expression.binary.right.* == .unary and expression.binary.right.unary.operation == .negation)) {
-                const bindings = Bindings(Key, T).init(.{
-                    .a = expression.binary.left,
-                    .b = expression.binary.right,
+            const right = expression.binary.right;
+            const left = expression.binary.left;
+
+            if (right.* == .unary and right.unary.operation == .negation) {
+                return Bindings(Key, T).init(.{
+                    .a = left,
+                    .b = right.unary.operand,
                 });
-                return bindings;
+            } else if (right.* == .number and right.number < 0.0) {
+                return Bindings(Key, T).init(.{
+                    .a = left,
+                    .b = &.{ .number = -right.number },
+                });
             }
 
             return error.NotApplicable;
         }
 
         // MARK: .solve()
-        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+        fn solve(expression: *const Expression(T), bindings: Bindings(Key, T), context: Context(T), allocator: std.mem.Allocator) std.mem.Allocator.Error!Solution(T) {
+            _ = context;
+
             const a = bindings.get(.a).?;
-            const b = bindings.get(.b).?.unary.operand;
+            const b = bindings.get(.b).?;
 
             const solution = try Solution(T).init(1, false, allocator);
             solution.steps[0] = try Step(T).init(
                 try expression.clone(allocator),
-                try (Expression(T){ .binary = .{
+                try Expression(T).init(.{ .binary = .{
                     .left = a,
                     .operation = .subtraction,
                     .right = b,
-                } }).clone(allocator),
+                } }, allocator),
                 try allocator.dupe(u8, "A plus sign and minus sign give together a minus sign"),
                 &.{},
                 allocator,
@@ -61,10 +70,9 @@ pub fn @"a + (-b)"(comptime T: type) Template(Key, T) {
     // MARK: template
     return Template(Key, T){
         .dynamic = .{
-            .name = "Rewrite: a + (-b)",
+            .name = "Addition: a + (-b)",
             .matches = Impl.matches,
             .solve = Impl.solve,
-            .variants = &.{},
         },
     };
 }
@@ -74,19 +82,12 @@ test @"a + (-b)" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Rewrite = @"a + (-b)"(T);
 
-        const one_minus_minus_x = Expression(T){ .binary = .{
-            .left = &.{ .number = 1.0 },
-            .operation = .addition,
-            .right = &.{ .unary = .{
-                .operation = .negation,
-                .operand = &.{ .variable = "x" },
-            } },
-        } };
+        const one_plus_minus_x = testingData(T).get("1 + (-x)").?;
 
-        const bindings = try Rewrite.dynamic.matches(&one_minus_minus_x);
+        const bindings = try Rewrite.dynamic.matches(one_plus_minus_x);
 
-        try testing.expectEqualDeep(one_minus_minus_x.binary.left, bindings.get(.a).?);
-        try testing.expectEqualDeep(one_minus_minus_x.binary.right, bindings.get(.b).?);
+        try testing.expectEqualDeep(one_plus_minus_x.binary.left, bindings.get(.a).?);
+        try testing.expectEqualDeep(one_plus_minus_x.binary.right.unary.operand, bindings.get(.b).?);
     }
 }
 
@@ -94,23 +95,16 @@ test "a + (-b)(T).solve" {
     inline for (.{ f32, f64, f128 }) |T| {
         const Rewrite = @"a + (-b)"(T);
 
-        const one_minus_minus_x = Expression(T){ .binary = .{
-            .left = &.{ .number = 1.0 },
-            .operation = .addition,
-            .right = &.{ .unary = .{
-                .operation = .negation,
-                .operand = &.{ .variable = "x" },
-            } },
-        } };
+        const one_plus_minus_x = testingData(T).get("1 + (-x)").?;
 
-        const bindings = try Rewrite.dynamic.matches(&one_minus_minus_x);
-        const solution = try Rewrite.dynamic.solve(&one_minus_minus_x, bindings, testing.allocator);
+        const bindings = try Rewrite.dynamic.matches(one_plus_minus_x);
+        const solution = try Rewrite.dynamic.solve(one_plus_minus_x, bindings, .default, testing.allocator);
         defer solution.deinit(testing.allocator);
 
         const expected = Solution(T){
             .is_final = false,
             .steps = @constCast(&[_]*const Step(T){&.{
-                .before = &one_minus_minus_x,
+                .before = one_plus_minus_x,
                 .after = &.{ .binary = .{
                     .left = &.{ .number = 1.0 },
                     .operation = .subtraction,
@@ -130,7 +124,9 @@ const testing = std.testing;
 
 const expr = @import("expr");
 const template = @import("template");
+const engine = @import("engine");
 
+const Context = engine.Context;
 const Expression = expr.Expression;
 const Template = template.Template;
 const Variant = template.Variant;
