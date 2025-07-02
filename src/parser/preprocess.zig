@@ -1,4 +1,4 @@
-const ExprType = enum {
+pub const ExprType = enum {
     parens,
     identifier,
     function,
@@ -6,11 +6,11 @@ const ExprType = enum {
 
 pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, comptime post: []const u8) !void {
     // the maximum additional count of characters these characters require.
-    // equals, degree, factorial, unicode characters, implicit multiplication.
-    const costs: @Vector(5, usize) = .{ 1, 7, 10, 3, 1 };
+    // equals, degree, factorial, unicode characters, implicit multiplication, derivation.
+    const costs: @Vector(6, usize) = .{ 1, 7, 10, 3, 1, 11 };
 
-    // equals, degree, factorial, unicode characters, implicit multiplication.
-    var counts: @Vector(5, usize) = .{ 0, 0, 0, 0, 0 };
+    // equals, degree, factorial, unicode characters, implicit multiplication, derivation.
+    var counts: @Vector(6, usize) = .{ 0, 0, 0, 0, 0, 1 };
 
     var i: usize = 0;
     var ch = self.input[i];
@@ -32,13 +32,24 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
                 counts[1] += 1;
             },
 
-            '!' => counts[2] += 1,
+            '!' => {
+                @branchHint(.unlikely);
+
+                counts[2] += 1;
+            },
+
+            '\'' => {
+                @branchHint(.unlikely);
+
+                counts[3] += 1;
+            },
 
             // standard ASCII characters
             0x9...0xA,
             0xD,
             0x20,
-            0x22...0x28,
+            0x22...0x26,
+            0x28,
             0x2A...0x2F,
             0x3A...0x3C,
             0x3E...0x40,
@@ -110,12 +121,10 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
     try self.buffer.ensureTotalCapacityPrecise(self.input.len + @reduce(.Add, costs * counts) + pre.len + post.len);
     self.buffer.appendSliceAssumeCapacity(pre);
 
-    var before: ?std.zig.Token.Tag = null;
-
-    var indices: std.EnumMap(ExprType, usize) = .init(.{});
-
     var tokenizer = std.zig.Tokenizer.init(self.input);
 
+    var before: ?std.zig.Token.Tag = null;
+    var indices: std.EnumMap(ExprType, usize) = .init(.{});
     var token = tokenizer.next();
     var offset: usize = 0;
 
@@ -137,29 +146,28 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
                     else => unreachable,
                 } catch return error.InvalidCharacter;
 
-                // TODO simd? @reduce(.Or, @splat(codepoint) == l18n.<...>) == true
-                if (std.mem.indexOfScalar(
-                    u21,
-                    l18n.Disallowed,
-                    codepoint,
-                ) != null) {
-                    @branchHint(.cold);
+                const invalid = @reduce(
+                    .Or,
+                    @as(@Vector(l18n.Disallowed.len, u21), @splat(codepoint)) == l18n.asVector(u21, l18n.Disallowed),
+                );
+                if (invalid) return error.InvalidCharacter;
 
-                    return error.InvalidCharacter;
-                }
+                const skippable_data = l18n.Whitespace ++ l18n.Separator ++ l18n.Math.codepoint;
+                const skippable = l18n.asVector(u21, skippable_data);
 
-                if (std.mem.indexOfScalar(
-                    u21,
-                    l18n.Whitespace ++ l18n.Separator ++ l18n.Math.codepoint,
-                    codepoint,
-                ) != null) {
-                    break;
-                }
+                const should_break = @reduce(
+                    .Or,
+                    @as(@Vector(skippable_data.len, u21), @splat(codepoint)) == skippable,
+                );
+                if (should_break) break;
 
                 end_idx += len;
             }
 
-            if (before != .identifier) self.buffer.appendSliceAssumeCapacity("@\"");
+            if (before != .identifier) {
+                indices.put(.identifier, self.buffer.items.len);
+                self.buffer.appendSliceAssumeCapacity("@\"");
+            }
             self.buffer.appendSliceAssumeCapacity(slice[0..end_idx]);
             self.buffer.appendAssumeCapacity('\"');
 
@@ -185,6 +193,15 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
             switch (next.tag) {
                 .invalid => self.buffer.appendSliceAssumeCapacity("@\""),
 
+                .bang, .bang_equal => {
+                    self.buffer.appendSliceAssumeCapacity(self.input[offset + token.loc.start .. offset + token.loc.end]);
+                    before = try passes.factorial(T, self.buffer.items.len - token.loc.end + token.loc.start, self, next);
+
+                    token = tokenizer.next();
+
+                    continue :state token.tag;
+                },
+
                 else => {},
             }
 
@@ -199,6 +216,20 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
         // `!`, ...
         .bang => {
             var next = tokenizer.next();
+
+            if (before != null) switch (before.?) {
+                // ...!
+                .number_literal, .identifier => {
+                    before = try passes.factorial(T, indices.getAssertContains(.identifier), self, next);
+
+                    token = tokenizer.next();
+
+                    continue :state token.tag;
+                },
+
+                else => {},
+            };
+
             if (next.tag == .equal) {
                 self.buffer.appendSliceAssumeCapacity("!=");
 
@@ -221,6 +252,8 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
 
         // can have implicit multiplication
         .l_paren => {
+            @branchHint(.likely);
+
             indices.put(.parens, self.buffer.items.len + 1);
 
             if (before) |before_tag| switch (before_tag) {
@@ -252,56 +285,38 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
         },
 
         .r_paren => {
-            var next = tokenizer.next();
+            @branchHint(.likely);
+
+            const next = tokenizer.next();
 
             switch (next.tag) {
                 // ...!=... (!, =) -  ...)!, <number>! and <identifier>! are factorials
                 .bang, .bang_equal => {
-                    const factorial = "factorial";
+                    const parens = indices.get(.parens) orelse return error.ParenthesisNotOpened;
 
-                    const parens_idx = indices.get(.parens) orelse return error.ParenthesisNotOpened;
-
-                    var previous_len = self.buffer.items.len;
-                    self.buffer.items.len += factorial.len;
-
-                    // parens_idx is the index of the first character _inside_ the parenthesis opened most recently.
-                    @memmove(self.buffer.items[parens_idx + factorial.len - 1 ..], self.buffer.items[parens_idx - 1 .. previous_len]);
-                    @memcpy(self.buffer.items[parens_idx - 1 .. parens_idx + factorial.len - 1], factorial);
-
-                    previous_len = self.buffer.items.len;
-
-                    if (next.tag == .bang_equal) {
-                        self.buffer.items.len += 3;
-
-                        @memcpy(self.buffer.items[previous_len..self.buffer.items.len], ")==");
-                        before = .equal;
-                    } else {
-                        self.buffer.items.len += 1;
-
-                        @memcpy(self.buffer.items[previous_len..self.buffer.items.len], ")");
-                        before = .r_paren;
-                    }
+                    @memmove(self.buffer.items[parens - 1 .. self.buffer.items.len - 1], self.buffer.items[parens..self.buffer.items.len]);
+                    self.buffer.items.len -= 1;
+                    before = try passes.factorial(T, parens - 1, self, next);
 
                     token = tokenizer.next();
 
                     continue :state token.tag;
                 },
 
-                .invalid => if (next.tag == .invalid and next.loc.end - next.loc.start == 1 and self.input[offset + next.loc.start] == '\'') {
+                .invalid, .char_literal => if (self.input[offset + next.loc.start] == '\'') {
                     // derivatives
-                    const beginning = (indices.get(.function) orelse return error.InvalidDerivative);
-
-                    const derivative = "derivative(";
-
-                    const previous_len = self.buffer.items.len;
-
-                    self.buffer.items.len += derivative.len;
-
-                    @memmove(self.buffer.items[beginning + derivative.len ..], self.buffer.items[beginning..previous_len]);
-                    @memcpy(self.buffer.items[beginning .. beginning + derivative.len], derivative);
                     self.buffer.appendAssumeCapacity(')');
+                    try passes.derivative(T, self, indices);
 
-                    next = tokenizer.next();
+                    if (offset + token.loc.start + 2 >= self.input.len) continue :state .eof;
+                    indices.remove(.function);
+
+                    tokenizer = std.zig.Tokenizer.init(self.input[offset + token.loc.start + 2 .. self.input.len :0]);
+                    offset += token.loc.start + 2;
+
+                    token = tokenizer.next();
+
+                    continue :state token.tag;
                 },
 
                 else => {},
@@ -315,37 +330,33 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
             continue :state token.tag;
         },
 
+        .char_literal => {
+            // derivatives
+            try passes.derivative(T, self, indices);
+
+            if (offset + token.loc.start + 2 >= self.input.len) continue :state .eof;
+            indices.remove(.function);
+
+            tokenizer = std.zig.Tokenizer.init(self.input[offset + token.loc.start + 2 .. self.input.len :0]);
+            offset += token.loc.start + 2;
+
+            token = tokenizer.next();
+
+            continue :state token.tag;
+        },
+
         // TODO create a list of valid tags
         else => |tag| {
+            @branchHint(.likely);
+
             const slice = self.input[offset + token.loc.start .. offset + token.loc.end];
 
             const next = tokenizer.next();
 
             switch (next.tag) {
-                // ...(... - implicit multiplication; previous token must be a right parenthesis or number
-                .l_paren => {
-                    switch (tag) {
-                        .number_literal,
-                        .r_paren,
-                        => {
-                            self.buffer.appendSliceAssumeCapacity(slice);
-                            self.buffer.appendSliceAssumeCapacity("*(");
-
-                            before = .l_paren;
-                            indices.put(.parens, self.buffer.items.len);
-
-                            token = tokenizer.next();
-                            continue :state token.tag;
-                        },
-
-                        else => {},
-                    }
-                },
-
                 .bang, .bang_equal => switch (token.tag) {
+                    // TODO separate this into its own branch outside of else
                     .number_literal,
-                    .identifier,
-                    .string_literal,
                     => {
                         self.buffer.appendSliceAssumeCapacity("factorial(");
                         self.buffer.appendSliceAssumeCapacity(slice);
@@ -457,10 +468,9 @@ test "preprocess5" {
     var p = Parser(f64).init(input[0..input.len :0], testing.allocator);
     defer p.deinit();
 
-    const err = p.preprocess();
-    try testing.expectError(error.AmbiguousMultiplication, err);
+    try p.preprocess();
 
-    std.debug.print("before: `{s}`\nafter: `{any}`\n", .{ input, err });
+    std.debug.print("before: `{s}`\nafter: `{s}`\n", .{ input, p.buffer.items });
 }
 
 test "preprocess6" {
@@ -469,10 +479,9 @@ test "preprocess6" {
     var p = Parser(f64).init(input[0..input.len :0], testing.allocator);
     defer p.deinit();
 
-    const err = p.preprocess();
-    try testing.expectError(error.AmbiguousMultiplication, err);
+    try p.preprocess();
 
-    std.debug.print("before: `{s}`\nafter: `{any}`\n", .{ input, err });
+    std.debug.print("before: `{s}`\nafter: `{s}`\n", .{ input, p.buffer.items });
 }
 
 test "preprocess7" {
@@ -499,6 +508,7 @@ test "preprocess8" {
 
 const std = @import("std");
 const parser = @import("parser");
+const passes = @import("parser/passes");
 
 const testing = std.testing;
 const Parser = parser.Parser;

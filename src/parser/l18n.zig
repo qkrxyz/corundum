@@ -1,3 +1,8 @@
+pub fn asVector(comptime T: type, comptime data: []const T) @Vector(data.len, T) {
+    const result: @Vector(data.len, T) = data[0..data.len].*;
+    return result;
+}
+
 pub const Disallowed: []const u21 = &[_]u21{
     0x2028, 0x2029, // line/paragraph separators
 };
