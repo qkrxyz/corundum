@@ -113,6 +113,7 @@ pub fn preprocess(comptime T: type, self: *Parser(T)) !void {
 
     state: switch (token.tag) {
         .invalid => {
+            // TODO handle cases when `°` is without a value
             const slice = self.input[offset + token.loc.start .. offset + token.loc.end];
 
             if (!std.unicode.utf8ValidateSlice(slice)) return error.InvalidCharacter;
@@ -185,6 +186,7 @@ pub fn preprocess(comptime T: type, self: *Parser(T)) !void {
                 .r_paren,
                 => {
                     self.buffer.appendSliceAssumeCapacity("*(");
+                    parens_idx.? += 1;
 
                     before = .l_paren;
                     token = tokenizer.next();
@@ -227,20 +229,8 @@ pub fn preprocess(comptime T: type, self: *Parser(T)) !void {
                     }
                 },
 
-                // ...! ...
-                .bang => {
-                    self.buffer.appendSliceAssumeCapacity("factorial(");
-                    self.buffer.appendSliceAssumeCapacity(slice);
-                    self.buffer.appendAssumeCapacity(')');
-
-                    before = .r_paren;
-                    token = tokenizer.next();
-
-                    continue :state token.tag;
-                },
-
                 // ...!=... (!, =) -  ...)!, <number>! and <identifier>! are factorials
-                .bang_equal => switch (token.tag) {
+                .bang, .bang_equal => switch (token.tag) {
                     .r_paren => {
                         const factorial = "factorial";
                         if (parens_idx == null) return error.ParenthesisNotOpened;
@@ -253,11 +243,19 @@ pub fn preprocess(comptime T: type, self: *Parser(T)) !void {
                         @memcpy(self.buffer.items[parens_idx.? - 1 .. parens_idx.? + factorial.len - 1], factorial);
 
                         previous_len = self.buffer.items.len;
-                        self.buffer.items.len += 3;
 
-                        @memcpy(self.buffer.items[previous_len..self.buffer.items.len], ")==");
+                        if (next.tag == .bang_equal) {
+                            self.buffer.items.len += 3;
 
-                        before = .equal;
+                            @memcpy(self.buffer.items[previous_len..self.buffer.items.len], ")==");
+                            before = .equal;
+                        } else {
+                            self.buffer.items.len += 1;
+
+                            @memcpy(self.buffer.items[previous_len..self.buffer.items.len], ")");
+                            before = .r_paren;
+                        }
+
                         token = tokenizer.next();
 
                         continue :state token.tag;

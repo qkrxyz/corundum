@@ -5,7 +5,7 @@ const corundum = @import("corundum");
 const expr = corundum.expr;
 const template = corundum.template;
 
-const ITERATIONS = (if (builtin.mode == .Debug) 5000 else 50000);
+pub const ITERATIONS = (if (builtin.mode == .Debug) 5000 else 50000);
 const total_runs = blk: {
     @setEvalBranchQuota((1 << 32) - 1);
     var result: usize = 0;
@@ -40,7 +40,7 @@ pub fn PerfData(comptime T: type) type {
     };
 }
 
-fn run(
+pub fn run(
     comptime T: type,
     comptime kind: template.TemplatesKind,
     input: *const expr.Expression(T),
@@ -197,7 +197,7 @@ fn run(
     };
 }
 
-fn run_mt(
+pub fn run_mt(
     comptime T: type,
     comptime kind: template.TemplatesKind,
     input: *const expr.Expression(T),
@@ -435,7 +435,7 @@ pub fn main() !void {
     }
 }
 
-inline fn rdtsc() usize {
+pub inline fn rdtsc() usize {
     comptime if (!builtin.target.cpu.arch.isX86()) return 0;
 
     var a: u32 = undefined;
