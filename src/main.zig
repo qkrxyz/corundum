@@ -112,7 +112,9 @@ pub fn main() !void {
         var cycles_sum: usize = 0;
         for (cycles) |x| cycles_sum += x;
 
-        const average_cycles: ?usize = if (builtin.target.cpu.arch.isX86()) cycles_sum / ITERATIONS else null;
+        const frequency = perf.frequency();
+
+        const average_cycles: ?usize = if (builtin.target.cpu.arch.isX86() or builtin.target.cpu.arch.isAARCH64()) cycles_sum / ITERATIONS else null;
 
         std.debug.print("[{d} iterations] {d:.2} ± {d:.2} ns ({d} outliers)", .{
             ITERATIONS,
@@ -122,7 +124,14 @@ pub fn main() !void {
         });
 
         if (average_cycles) |c| {
-            std.debug.print(", average {d} cycles/iter", .{c});
+            std.debug.print(", average {d} {s}/iter", .{
+                c,
+                if (builtin.target.cpu.arch.isX86()) "cycles" else "ticks",
+            });
+
+            if (builtin.target.cpu.arch.isAARCH64()) {
+                std.debug.print(" (frequency: {d} Hz, 1 tick = {d:.1} ns)", .{ frequency, (1.0 / @as(f128, @floatFromInt(frequency))) * std.time.ns_per_s });
+            }
         }
 
         std.debug.print("\n", .{});
@@ -137,55 +146,55 @@ pub fn main() !void {
         return;
     }
 
-    var diagnostics: std.zon.parse.Diagnostics = .{};
+    // var diagnostics: std.zon.parse.Diagnostics = .{};
 
-    const parsed = std.zon.parse.fromSlice(*const corundum.expr.Expression(f64), allocator, arguments[1], &diagnostics, .{}) catch {
-        var error_iterator = diagnostics.iterateErrors();
-        while (error_iterator.next()) |err| {
-            const stderr = std.io.getStdErr().writer();
-            try err.fmtMessage(&diagnostics).format("error: {s}\n", .{}, stderr);
-        }
+    // const parsed = std.zon.parse.fromSlice(*const corundum.expr.Expression(f64), allocator, arguments[1], &diagnostics, .{}) catch {
+    //     var error_iterator = diagnostics.iterateErrors();
+    //     while (error_iterator.next()) |err| {
+    //         const stderr = std.io.getStdErr().writer();
+    //         try err.fmtMessage(&diagnostics).format("error: {s}\n", .{}, stderr);
+    //     }
 
-        std.process.exit(1);
-    };
-    defer parsed.deinit(allocator);
+    //     std.process.exit(1);
+    // };
+    // defer parsed.deinit(allocator);
 
-    const structural = parsed.structural();
-    const hash = parsed.hash();
+    // const structural = parsed.structural();
+    // const hash = parsed.hash();
 
-    inline for (corundum.template.Templates.all()) |template| {
-        const value = corundum.template.Templates.get(template);
-        switch (value.module(f64)) {
-            .@"n-ary" => |n_ary| {
-                const bindings = n_ary.matches(parsed, gpa);
+    // inline for (corundum.template.Templates.all()) |template| {
+    //     const value = corundum.template.Templates.get(template);
+    //     switch (value.module(f64)) {
+    //         .@"n-ary" => |n_ary| {
+    //             const bindings = n_ary.matches(parsed, gpa);
 
-                if (bindings) |b| {
-                    const solution = try n_ary.solve(parsed, b, .default, gpa);
-                    std.mem.doNotOptimizeAway(solution.steps);
-                    solution.deinit(gpa);
-                    gpa.free(b);
-                } else |_| {}
-            },
-            .dynamic => |dynamic| {
-                const bindings = dynamic.matches(parsed);
+    //             if (bindings) |b| {
+    //                 const solution = try n_ary.solve(parsed, b, .default, gpa);
+    //                 std.mem.doNotOptimizeAway(solution.steps);
+    //                 solution.deinit(gpa);
+    //                 gpa.free(b);
+    //             } else |_| {}
+    //         },
+    //         .dynamic => |dynamic| {
+    //             const bindings = dynamic.matches(parsed);
 
-                if (bindings) |b| {
-                    const solution = try dynamic.solve(parsed, b, .default, gpa);
-                    std.mem.doNotOptimizeAway(solution.steps);
-                    solution.deinit(gpa);
-                } else |_| {}
-            },
-            .structure => |structure| if (structural == comptime structure.ast.structural()) {
-                if (structure.matches(parsed)) |bindings| {
-                    const solution = try structure.solve(parsed, bindings, .default, allocator);
-                    std.mem.doNotOptimizeAway(solution);
-                    defer solution.deinit(allocator);
-                } else |_| {}
-            },
-            .identity => |identity| if (hash == comptime identity.ast.hash()) {
-                const solution = identity.proof(.default);
-                std.mem.doNotOptimizeAway(solution);
-            },
-        }
-    }
+    //             if (bindings) |b| {
+    //                 const solution = try dynamic.solve(parsed, b, .default, gpa);
+    //                 std.mem.doNotOptimizeAway(solution.steps);
+    //                 solution.deinit(gpa);
+    //             } else |_| {}
+    //         },
+    //         .structure => |structure| if (structural == comptime structure.ast.structural()) {
+    //             if (structure.matches(parsed)) |bindings| {
+    //                 const solution = try structure.solve(parsed, bindings, .default, allocator);
+    //                 std.mem.doNotOptimizeAway(solution);
+    //                 defer solution.deinit(allocator);
+    //             } else |_| {}
+    //         },
+    //         .identity => |identity| if (hash == comptime identity.ast.hash()) {
+    //             const solution = identity.proof(.default);
+    //             std.mem.doNotOptimizeAway(solution);
+    //         },
+    //     }
+    // }
 }

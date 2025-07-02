@@ -436,15 +436,35 @@ pub fn main() !void {
 }
 
 pub inline fn rdtsc() usize {
-    comptime if (!builtin.target.cpu.arch.isX86()) return 0;
+    if (builtin.target.cpu.arch.isX86()) {
+        var a: u32 = undefined;
+        var b: u32 = undefined;
+        asm volatile ("rdtscp"
+            : [a] "={edx}" (a),
+              [b] "={eax}" (b),
+            :
+            : "ecx"
+        );
+        return (@as(u64, a) << 32) | b;
+    } else if (builtin.target.cpu.arch.isAARCH64()) {
+        var x: usize = undefined;
+        asm volatile ("mrs %[x], cntvct_el0"
+            : [x] "=r" (x),
+            :
+            : "volatile"
+        );
+        return x;
+    } else return 0;
+}
 
-    var a: u32 = undefined;
-    var b: u32 = undefined;
-    asm volatile ("rdtscp"
-        : [a] "={edx}" (a),
-          [b] "={eax}" (b),
+pub inline fn frequency() usize {
+    if (!builtin.target.cpu.arch.isAARCH64()) return 0;
+
+    var val: usize = undefined;
+    asm volatile ("mrs %[result], cntfrq_el0"
+        : [result] "=r" (val),
         :
-        : "ecx"
+        : "volatile"
     );
-    return (@as(u64, a) << 32) | b;
+    return val;
 }
