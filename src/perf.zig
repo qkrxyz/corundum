@@ -58,7 +58,7 @@ pub fn run(
     } else t(T).name, ITERATIONS);
 
     var times: [ITERATIONS]u64 = undefined;
-    var cycles: [ITERATIONS]usize = undefined;
+    var cycles: [ITERATIONS]u64 = undefined;
 
     for (0..ITERATIONS) |i| {
         var arena = std.heap.ArenaAllocator.init(allocator);
@@ -435,7 +435,7 @@ pub fn main() !void {
     }
 }
 
-pub inline fn rdtsc() usize {
+pub inline fn rdtsc() u64 {
     if (builtin.target.cpu.arch.isX86()) {
         var a: u32 = undefined;
         var b: u32 = undefined;
@@ -447,7 +447,7 @@ pub inline fn rdtsc() usize {
         );
         return (@as(u64, a) << 32) | b;
     } else if (builtin.target.cpu.arch.isAARCH64()) {
-        var x: usize = undefined;
+        var x: u64 = undefined;
         asm volatile ("mrs %[x], cntvct_el0"
             : [x] "=r" (x),
             :

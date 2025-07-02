@@ -36,7 +36,7 @@ pub fn main() !void {
         var times: []u64 = try allocator.alloc(u64, ITERATIONS);
         defer allocator.free(times);
 
-        var cycles: []usize = try allocator.alloc(usize, ITERATIONS);
+        var cycles: []u64 = try allocator.alloc(u64, ITERATIONS);
         defer allocator.free(cycles);
 
         for (0..ITERATIONS) |i| {
@@ -109,12 +109,12 @@ pub fn main() !void {
         const std_deviation = @sqrt(variance);
 
         // cycles
-        var cycles_sum: usize = 0;
+        var cycles_sum: u64 = 0;
         for (cycles) |x| cycles_sum += x;
 
         const frequency = perf.frequency();
 
-        const average_cycles: ?usize = if (builtin.target.cpu.arch.isX86() or builtin.target.cpu.arch.isAARCH64()) cycles_sum / ITERATIONS else null;
+        const average_cycles: ?f128 = if (builtin.target.cpu.arch.isX86() or builtin.target.cpu.arch.isAARCH64()) @as(f128, @floatFromInt(cycles_sum)) / ITERATIONS else null;
 
         std.debug.print("[{d} iterations] {d:.2} ± {d:.2} ns ({d} outliers)", .{
             ITERATIONS,
@@ -124,7 +124,7 @@ pub fn main() !void {
         });
 
         if (average_cycles) |c| {
-            std.debug.print(", average {d} {s}/iter", .{
+            std.debug.print(", average {d:.2} {s}/iter", .{
                 c,
                 if (builtin.target.cpu.arch.isX86()) "cycles" else "ticks",
             });

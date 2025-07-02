@@ -18,7 +18,11 @@ pub fn Parser(comptime T: type) type {
         }
 
         pub fn preprocess(self: *Self) !void {
-            return preprocess_impl(T, self);
+            return preprocess_impl(T, self, pre, post);
+        }
+
+        pub fn parse(self: *Self) !void {
+            return parse_impl(T, self);
         }
 
         pub fn deinit(self: *Self) void {
@@ -33,3 +37,4 @@ const expr = @import("expr");
 const Expression = expr.Expression;
 
 const preprocess_impl = @import("parser/preprocess").preprocess;
+const parse_impl = @import("parser/parse").parse;
