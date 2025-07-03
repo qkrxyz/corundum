@@ -1,29 +1,9 @@
 pub fn factorial(
-    before: std.zig.Token.Tag,
-    indices: *std.EnumMap(preprocess.Expression, usize),
+    start_idx: usize,
     buffer: []u8,
     idx: *usize,
 ) !void {
     const idx_val = idx.*;
-
-    const start_idx, const key = switch (before) {
-        // implicit multiplication/function/parenthesis
-        .r_paren => if (indices.get(.function)) |f| .{
-            f,
-            preprocess.Expression.function,
-        } else if (indices.get(.number)) |n| .{
-            n,
-            preprocess.Expression.number,
-        } else .{
-            indices.get(.parenthesis) orelse return error.InvalidToken,
-            preprocess.Expression.parenthesis,
-        },
-
-        .number_literal => .{ indices.getAssertContains(.number), preprocess.Expression.number },
-        .identifier => .{ indices.getAssertContains(.identifier), preprocess.Expression.identifier },
-
-        else => return error.InvalidToken,
-    };
 
     const factorial_string = "factorial(";
 
@@ -33,8 +13,6 @@ pub fn factorial(
 
     buffer[idx.*] = ')';
     idx.* += 1;
-
-    indices.remove(key);
 }
 
 pub fn indexOf(comptime T: type, input: []const T, scalar: T) ?usize {

@@ -122,18 +122,21 @@ fn count(input: []const u8) !usize {
                     // 2 bytes
                     0xC2...0xDF => blk: {
                         defer i += 1;
+                        result += 1;
                         break :blk std.unicode.utf8Decode2(remaining[i .. i + 2][0..2].*) catch return error.InvalidCharacter;
                     },
 
                     // 3 bytes
                     0xE0...0xEF => blk: {
                         defer i += 2;
+                        result += 2;
                         break :blk std.unicode.utf8Decode3(remaining[i .. i + 3][0..3].*) catch return error.InvalidCharacter;
                     },
 
                     // 4 bytes
                     0xF0...0xF4 => blk: {
                         defer i += 3;
+                        result += 3;
                         break :blk std.unicode.utf8Decode4(remaining[i .. i + 4][0..4].*) catch return error.InvalidCharacter;
                     },
 
@@ -158,11 +161,16 @@ fn count(input: []const u8) !usize {
     return result;
 }
 
-pub const Expression = enum {
-    function,
-    parenthesis,
-    identifier,
-    number,
+pub const Token = struct {
+    kind: enum {
+        identifier,
+        function,
+        number,
+        parenthesis,
+    },
+
+    depth: usize,
+    index: usize,
 };
 
 pub const PreprocessingError = error{
@@ -188,10 +196,12 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
 
     var tokenizer = std.zig.Tokenizer.init(parser.input);
 
+    var depth: usize = 0;
     var token = tokenizer.next();
-    var before: std.zig.Token.Tag = undefined;
+    var before: ?std.zig.Token.Tag = null;
 
-    var indices: std.EnumMap(Expression, usize) = .init(.{});
+    var indices: std.ArrayList(Token) = try .initCapacity(parser.allocator, length / 2);
+    defer indices.clearAndFree();
 
     outer: while (token.tag != .eof) {
         switch (token.tag) {
@@ -242,6 +252,12 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
                 if (before != .identifier) {
                     @memcpy(buffer[idx .. idx + 2], "@\"");
                     idx += 2;
+
+                    indices.appendAssumeCapacity(Token{
+                        .depth = depth,
+                        .kind = .identifier,
+                        .index = idx - 2,
+                    });
                 }
 
                 @memcpy(buffer[idx .. idx + end_idx], parser.input[offset + token.loc.start .. offset + token.loc.start + end_idx]);
@@ -249,8 +265,6 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
 
                 buffer[idx] = '\"';
                 idx += 1;
-
-                indices.remove(.identifier);
 
                 // reset
                 if (offset + token.loc.start + end_idx >= parser.input.len) break;
@@ -265,7 +279,11 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
 
             // MARK: numbers
             .number_literal => {
-                indices.put(.number, idx);
+                indices.appendAssumeCapacity(Token{
+                    .depth = depth,
+                    .kind = .number,
+                    .index = idx,
+                });
                 const token_length = token.loc.end - token.loc.start;
 
                 @memcpy(buffer[idx .. idx + token_length], parser.input[offset + token.loc.start .. offset + token.loc.end]);
@@ -273,11 +291,26 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
             },
 
             // MARK: factorial
-            .bang => try passes.factorial(before, &indices, buffer, &idx),
+            .bang => {
+                if (indices.items.len == 0) return error.InvalidToken;
+
+                var start: Token = indices.items[0];
+                for (indices.items[1..]) |t| {
+                    if (t.depth != depth) continue;
+                    start = t;
+                }
+
+                try passes.factorial(start.index, buffer, &idx);
+            },
 
             // MARK: identifier
             .identifier => {
-                indices.put(.identifier, idx);
+                indices.appendAssumeCapacity(Token{
+                    .depth = depth,
+                    .kind = .identifier,
+                    .index = idx,
+                });
+
                 const token_length = token.loc.end - token.loc.start;
                 before = token.tag;
 
@@ -294,13 +327,18 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
                     // `<identifier>(` is a function call, and needs to be tracked.
                     // MARK: function call
                     .l_paren => {
-                        indices.put(.function, idx);
+                        indices.appendAssumeCapacity(Token{
+                            .depth = depth,
+                            .kind = .function,
+                            .index = idx,
+                        });
 
                         @memcpy(buffer[idx .. idx + token_length], parser.input[offset + token.loc.start .. offset + token.loc.end]);
                         idx += token_length;
 
                         buffer[idx] = '(';
                         idx += 1;
+                        depth += 1;
 
                         before = next.tag;
                         next = tokenizer.next();
@@ -321,19 +359,31 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
             // MARK: implicit multiplication
             // `...(` -> `... * (`, if the previous token is a number or a right parenthesis
             .l_paren => {
-                switch (before) {
+                if (before) |b| switch (b) {
                     .number_literal, .r_paren => {
                         buffer[idx] = '*';
                         idx += 1;
                     },
 
                     else => {},
-                }
+                };
 
-                indices.put(.parenthesis, idx);
+                indices.appendAssumeCapacity(Token{
+                    .depth = depth,
+                    .kind = .identifier,
+                    .index = idx,
+                });
 
                 buffer[idx] = '(';
                 idx += 1;
+                depth += 1;
+            },
+
+            // MARK: right parenthesis
+            .r_paren => {
+                buffer[idx] = ')';
+                idx += 1;
+                depth -= 1;
             },
 
             // MARK: double equals
@@ -344,7 +394,7 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
             },
 
             // "default" branch
-            .plus, .minus, .asterisk, .slash, .r_paren => {
+            .plus, .minus, .asterisk, .slash => {
                 const token_length = token.loc.end - token.loc.start;
 
                 @memcpy(buffer[idx .. idx + token_length], parser.input[offset + token.loc.start .. offset + token.loc.end]);
@@ -371,8 +421,6 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
     }
 
     return buffer[0..idx];
-    // std.debug.print("final: `{s}`\n", .{buffer});
-    // @trap();
 }
 
 const std = @import("std");
