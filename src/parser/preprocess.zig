@@ -1,598 +1,382 @@
-pub const ExprType = enum {
-    parens,
-    identifier,
-    function,
+const PREFIX = "const _ = ";
+const POSTFIX = ";";
+
+// https://ziglang.org/documentation/master/#Source-Encoding
+const INVALID_BYTES: []const u8 = &[_]u8{
+    0x0,  0x1,  0x2,  0x3,  0x4,  0x5,  0x6,  0x7,  0x8,  0xB,  0xC,  0xE,  0xF,
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C,
+    0x1D, 0x1E, 0x1F, 0x7F, 0x85,
 };
 
-pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, comptime post: []const u8) !void {
-    // the maximum additional count of characters these characters require.
-    // equals, degree, factorial, unicode characters, implicit multiplication, derivation.
-    const costs: @Vector(6, usize) = .{ 1, 7, 11, 3, 1, 12 };
+const REPLACEMENTS: []const u8 = l18n.asBytes(l18n.RewriteInPlace.codepoints);
 
-    // equals, degree, factorial, unicode characters, implicit multiplication, derivation.
-    var counts: @Vector(6, usize) = .{ 0, 0, 0, 0, 0, 0 };
+// MARK: count
+fn count(input: []const u8) !usize {
+    var result: usize = input.len;
+
+    // inspired by https://ziglang.org/documentation/master/std/#std.unicode.utf8ValidateSliceImpl
+    var remaining = input;
+
+    if (std.simd.suggestVectorLength(u8)) |length| {
+        const Chunk = @Vector(length, u8);
+
+        const equal: Chunk = @splat('=');
+        const bang: Chunk = @splat('!');
+        const apostrophe: Chunk = @splat('\'');
+        const r_paren: Chunk = @splat(')');
+        const l_paren: Chunk = @splat('(');
+        const degree: Chunk = @splat('°');
+
+        const multibyte_start: Chunk = @splat(0xC2); // 2 bytes long
+        const multibyte_end: Chunk = @splat(0xF4); // 4 bytes long
+
+        const digit_start: Chunk = @splat('0');
+        const digit_end: Chunk = @splat('9');
+
+        while (remaining.len >= length) {
+            const slice = remaining[0..length];
+            if (std.mem.indexOfAny(u8, slice, INVALID_BYTES) != null) return error.InvalidCharacter;
+
+            const chunk: Chunk = slice.*;
+
+            result += std.simd.countTrues(chunk == equal) * 2; // "==".len = 2
+            result += std.simd.countTrues(chunk == bang) * 10; // "factorial(".len = 10
+            result += std.simd.countTrues(chunk == apostrophe) * 11; // "derivative(".len = 11
+            result += std.simd.countTrues(chunk == r_paren) * 2; // implicit multiplication
+            result += std.simd.countTrues(chunk == l_paren) * 2; // implicit multiplication
+            result += std.simd.countTrues(chunk == degree) * 7; // "degree(".len = 7
+
+            const multibyte_start_mask = chunk >= multibyte_start;
+            const multibyte_end_mask = chunk <= multibyte_end;
+            const unicode = std.simd.countTrues(multibyte_start_mask & multibyte_end_mask) * 3;
+            result += unicode; // the syntax for non-ASCII identifiers in Zig is `@"..."`, which adds 3 characters.
+
+            const digit_start_mask = chunk >= digit_start;
+            const digit_end_mask = chunk <= digit_end;
+            result += std.simd.countTrues(digit_start_mask & digit_end_mask) * 2; // numbers can also implicitly multiply
+
+            if (unicode != 0) {
+                var i: usize = 0;
+                while (i < slice.len) {
+                    const codepoint = switch (slice[i]) {
+                        // 2 bytes
+                        0xC2...0xDF => blk: {
+                            defer i += 1;
+                            break :blk std.unicode.utf8Decode2(slice[i .. i + 2][0..2].*) catch return error.InvalidCharacter;
+                        },
+
+                        // 3 bytes
+                        0xE0...0xEF => blk: {
+                            defer i += 2;
+                            break :blk std.unicode.utf8Decode3(slice[i .. i + 3][0..3].*) catch return error.InvalidCharacter;
+                        },
+
+                        // 4 bytes
+                        0xF0...0xF4 => blk: {
+                            defer i += 3;
+                            break :blk std.unicode.utf8Decode4(slice[i .. i + 4][0..4].*) catch return error.InvalidCharacter;
+                        },
+
+                        // 1 byte
+                        else => slice[i],
+                    };
+
+                    const data = l18n.RewriteInPlace.codepoints;
+
+                    if (passes.indexOf(u21, &data, codepoint)) |idx| {
+                        result += l18n.RewriteInPlace.inner[idx].rewrite.len + 3;
+                        i += 1;
+                    }
+
+                    i += 1;
+                }
+            }
+
+            remaining = remaining[length..];
+        }
+    }
 
     var i: usize = 0;
-    var ch = self.input[i];
+    while (i < remaining.len) {
+        const char = remaining[i];
+        if (passes.indexOf(u8, INVALID_BYTES, char) != null) return error.InvalidCharacter;
 
-    while (i < self.input.len) {
-        switch (ch) {
-            // disallowed characters - https://ziglang.org/documentation/master/#Source-Encoding
-            0x0...0x8, 0xB...0xC, 0xE...0x1F, 0x7F, 0x85 => {
-                @branchHint(.cold);
+        switch (char) {
+            // "==".len = 2
+            '=' => result += 2,
 
-                return error.InvalidCharacter;
-            },
+            // "factorial(".len = 10
+            '!' => result += 10,
 
-            '=' => counts[0] += 1,
+            // "derivative(".len = 11
+            '\'' => result += 11,
 
-            '°' => {
-                @branchHint(.unlikely);
+            // "degree(".len = 7
+            '°' => result += 7,
 
-                counts[1] += 1;
-            },
+            // implicit multiplication
+            '(', ')', '0'...'9' => result += 1,
 
-            '!' => {
-                @branchHint(.unlikely);
-
-                counts[2] += 1;
-            },
-
-            '\'' => {
-                @branchHint(.unlikely);
-
-                counts[5] += 1;
-            },
-
-            // standard ASCII characters
-            0x9...0xA,
-            0xD,
-            0x20,
-            0x22...0x26,
-            0x28,
-            0x2A...0x2F,
-            0x3A...0x3C,
-            0x3E...0x40,
-            0x41...0x5A,
-            0x5B...0x60,
-            0x61...0x7A,
-            0x7B...0x7E,
-            0x80...0x84,
-            0x86...0xAF,
-            0xB1...0xBF,
-            0xF8...0xFF,
-            => {},
-
-            // )
-            0x29 => counts[4] += 1,
-
-            // numbers - can have an implicit multiplication
-            0x30...0x39 => {
-                @branchHint(.likely);
-
-                if (i + 1 < self.input.len) switch (self.input[i + 1]) {
-                    0x41...0x5A, // A-Z
-                    0x61...0x7A, // a-z
-                    0x28,
-                    0x29, // (, )
-                    => {
-                        counts[4] += 1;
+            else => {
+                const codepoint = switch (char) {
+                    // 2 bytes
+                    0xC2...0xDF => blk: {
+                        defer i += 1;
+                        break :blk std.unicode.utf8Decode2(remaining[i .. i + 2][0..2].*) catch return error.InvalidCharacter;
                     },
 
-                    // UTF-8 start bytes
-                    0xC0...0xF7,
-                    => {
-                        counts[3] += 1;
-                        counts[4] += 1;
-
-                        i += try std.unicode.utf8ByteSequenceLength(ch) - 1;
+                    // 3 bytes
+                    0xE0...0xEF => blk: {
+                        defer i += 2;
+                        break :blk std.unicode.utf8Decode3(remaining[i .. i + 3][0..3].*) catch return error.InvalidCharacter;
                     },
 
-                    else => {},
+                    // 4 bytes
+                    0xF0...0xF4 => blk: {
+                        defer i += 3;
+                        break :blk std.unicode.utf8Decode4(remaining[i .. i + 4][0..4].*) catch return error.InvalidCharacter;
+                    },
+
+                    // 1 byte
+                    else => char,
                 };
-            },
 
-            // UTF-8 start bytes, need to be encoded using `@"..."`.
-            0xC0...0xF7,
-            => {
-                counts[3] += 1;
+                const data = l18n.RewriteInPlace.codepoints;
 
-                i += try std.unicode.utf8ByteSequenceLength(ch) - 1;
+                if (passes.indexOf(u21, &data, codepoint)) |idx| {
+                    result += l18n.RewriteInPlace.inner[idx].rewrite.len + 3;
+                    i += 1;
+                }
+
+                i += 1;
             },
         }
 
         i += 1;
-        ch = self.input[i];
     }
 
-    try self.buffer.ensureTotalCapacityPrecise(self.input.len + @reduce(.Add, costs * counts) + pre.len + post.len);
-    self.buffer.appendSliceAssumeCapacity(pre);
+    return result;
+}
 
-    var tokenizer = std.zig.Tokenizer.init(self.input);
+pub const Expression = enum {
+    function,
+    parenthesis,
+    identifier,
+    number,
+};
 
-    var before: ?std.zig.Token.Tag = null;
-    var indices: std.EnumMap(ExprType, usize) = .init(.{});
-    var token = tokenizer.next();
+pub const PreprocessingError = error{
+    OutOfMemory,
+    InvalidToken,
+    InvalidCharacter,
+};
+
+// .identifier, .invalid -> `@"..."`
+// .equal -> `==`
+// .number_literal, .bang/.bang_equal -> `factorial(...)`[==]
+// .number_literal/.r_paren, .l_paren -> `... * ...`
+// MARK: preprocess
+pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 {
+    const length = try count(parser.input) + PREFIX.len + POSTFIX.len;
+    var buffer: []u8 = try parser.allocator.alloc(u8, length);
+
+    // modified when appending to the buffer
+    var idx: usize = 0;
+
+    // modified when resetting the tokenizer
     var offset: usize = 0;
 
-    state: switch (token.tag) {
-        .invalid => {
-            if (self.input[offset + token.loc.start] == '\'') {
-                try passes.derivative(T, self, indices);
-
-                before = .r_paren;
-                tokenizer = std.zig.Tokenizer.init(self.input[offset + token.loc.end ..]);
-
-                token = tokenizer.next();
-                continue :state token.tag;
-            }
-
-            const slice = self.input[offset + token.loc.start .. offset + token.loc.end];
-
-            if (!std.unicode.utf8ValidateSlice(slice)) return error.InvalidCharacter;
-
-            var end_idx: usize = 0;
-
-            while (end_idx < slice.len) {
-                const len = try std.unicode.utf8ByteSequenceLength(slice[end_idx]);
-                const codepoint: u21 = switch (len) {
-                    1 => slice[end_idx],
-                    2 => std.unicode.utf8Decode2(slice[end_idx .. end_idx + 2][0..2].*),
-                    3 => std.unicode.utf8Decode3(slice[end_idx .. end_idx + 3][0..3].*),
-                    4 => std.unicode.utf8Decode4(slice[end_idx .. end_idx + 4][0..4].*),
-                    else => unreachable,
-                } catch return error.InvalidCharacter;
-
-                const invalid = @reduce(
-                    .Or,
-                    @as(@Vector(l18n.Disallowed.len, u21), @splat(codepoint)) == l18n.asVector(u21, l18n.Disallowed),
-                );
-                if (invalid) return error.InvalidCharacter;
-
-                const skippable_data = l18n.Whitespace ++ l18n.Separator ++ l18n.Math.codepoint;
-                const skippable = l18n.asVector(u21, skippable_data);
-
-                const should_break = @reduce(
-                    .Or,
-                    @as(@Vector(skippable_data.len, u21), @splat(codepoint)) == skippable,
-                );
-                if (should_break) break;
-
-                end_idx += len;
-            }
-
-            if (before != .identifier) {
-                indices.put(.identifier, self.buffer.items.len);
-                self.buffer.appendSliceAssumeCapacity("@\"");
-            }
-            self.buffer.appendSliceAssumeCapacity(slice[0..end_idx]);
-            self.buffer.appendAssumeCapacity('\"');
-
-            // reset
-            if (offset + token.loc.start + end_idx >= self.input.len) continue :state .eof;
-
-            tokenizer = std.zig.Tokenizer.init(self.input[offset + token.loc.start + end_idx .. self.input.len :0]);
-
-            offset += token.loc.start + end_idx;
-            before = .identifier;
-
-            token = tokenizer.next();
-            continue :state token.tag;
-        },
-
-        .identifier => {
-            @branchHint(.likely);
-
-            indices.put(.identifier, self.buffer.items.len);
-            before = .identifier;
-
-            const next = tokenizer.next();
-            switch (next.tag) {
-                .char_literal => {
-                    self.buffer.appendSliceAssumeCapacity(self.input[offset + token.loc.start .. offset + token.loc.end]);
-                    try passes.derivative(T, self, indices);
-
-                    before = .r_paren;
-
-                    // `''` has length 2, which means that this is a double derivative
-                    if (next.loc.end - next.loc.start == 2) {
-                        indices.put(.function, indices.get(.identifier) orelse unreachable);
-                        try passes.derivative(T, self, indices);
-                        before = .r_paren;
-
-                        token = tokenizer.next();
-                        continue :state token.tag;
-                    }
-
-                    tokenizer = std.zig.Tokenizer.init(self.input[offset + next.loc.start + 1 ..]);
-                    offset += next.loc.start + 1;
-
-                    token = tokenizer.next();
-                    continue :state token.tag;
-                },
-
-                .invalid => {
-                    if (self.input[offset + next.loc.start] == '\'') {
-                        self.buffer.appendSliceAssumeCapacity(self.input[offset + token.loc.start .. offset + token.loc.end]);
-                        try passes.derivative(T, self, indices);
-
-                        before = .r_paren;
-
-                        tokenizer = std.zig.Tokenizer.init(self.input[offset + next.loc.start + 1 ..]);
-                        offset += next.loc.start + 1;
-
-                        token = tokenizer.next();
-
-                        continue :state token.tag;
-                    } else {
-                        self.buffer.appendSliceAssumeCapacity("@\"");
-                    }
-                },
-
-                .bang, .bang_equal => {
-                    indices.put(.function, self.buffer.items.len);
-                    self.buffer.appendSliceAssumeCapacity(self.input[offset + token.loc.start .. offset + token.loc.end]);
-                    before = try passes.factorial(T, self.buffer.items.len - token.loc.end + token.loc.start, self, next);
-
-                    token = tokenizer.next();
-                    continue :state token.tag;
-                },
-
-                else => {},
-            }
-
-            self.buffer.appendSliceAssumeCapacity(self.input[offset + token.loc.start .. offset + token.loc.end]);
-
-            token = next;
-            continue :state token.tag;
-        },
-
-        .eof => {},
-
-        // `!`, ...
-        .bang => {
-            var next = tokenizer.next();
-
-            if (indices.get(.function)) |func| {
-                before = try passes.factorial(
-                    T,
-                    func,
-                    self,
-                    next,
-                );
-
-                token = next;
-                continue :state token.tag;
-            }
-
-            if (before != null) switch (before.?) {
-                // ...!
-                .number_literal, .identifier => {
-                    const start = indices.getAssertContains(.identifier);
-                    before = try passes.factorial(T, start, self, next);
-                    indices.put(.function, start);
-
-                    token = tokenizer.next();
-                    continue :state token.tag;
-                },
-
-                else => {},
-            };
-
-            if (next.tag == .equal) {
-                self.buffer.appendSliceAssumeCapacity("!=");
-
-                next = tokenizer.next();
-            }
-
-            token = next;
-            continue :state token.tag;
-        },
-
-        .equal => {
-            self.buffer.appendSliceAssumeCapacity("==");
-            before = .equal;
-
-            token = tokenizer.next();
-            continue :state token.tag;
-        },
-
-        // can have implicit multiplication
-        .l_paren => {
-            @branchHint(.likely);
-
-            indices.put(.parens, self.buffer.items.len + 1);
-
-            if (before) |before_tag| switch (before_tag) {
-                .number_literal,
-                .r_paren,
-                => {
-                    self.buffer.appendSliceAssumeCapacity("*(");
-                    indices.getPtrAssertContains(.parens).* += 1;
-
-                    before = .l_paren;
-                    token = tokenizer.next();
-                    continue :state token.tag;
-                },
-
-                // function call
-                .identifier => {
-                    indices.put(.function, indices.getAssertContains(.identifier));
-                },
-
-                else => {},
-            };
-
-            self.buffer.appendAssumeCapacity('(');
-
-            before = .l_paren;
-            token = tokenizer.next();
-
-            continue :state token.tag;
-        },
-
-        .r_paren => {
-            @branchHint(.likely);
-
-            const next = tokenizer.next();
-
-            switch (next.tag) {
-                // ...!=... (!, =) -  ...)!, <number>! and <identifier>! are factorials
-                .bang, .bang_equal => {
-                    const parens = indices.get(.parens) orelse return error.ParenthesisNotOpened;
-
-                    @memmove(self.buffer.items[parens - 1 .. self.buffer.items.len - 1], self.buffer.items[parens..self.buffer.items.len]);
-                    self.buffer.items.len -= 1;
-                    before = try passes.factorial(T, parens - 1, self, next);
-
-                    token = tokenizer.next();
-
-                    continue :state token.tag;
-                },
-
-                .invalid => if (self.input[offset + next.loc.start] == '\'') {
-                    // derivatives
-                    self.buffer.appendAssumeCapacity(')');
-                    try passes.derivative(T, self, indices);
-
-                    if (offset + token.loc.start + 1 >= self.input.len) continue :state .eof;
-                    indices.remove(.function);
-
-                    tokenizer = std.zig.Tokenizer.init(self.input[offset + token.loc.start + 1 .. self.input.len :0]);
-                    offset += token.loc.start + 1;
-
-                    token = tokenizer.next();
-
-                    continue :state token.tag;
-                },
-
-                .char_literal => {
-                    // derivatives
-                    const before_len = offset + token.loc.start;
-
-                    try passes.derivative(T, self, indices);
-
-                    if (token.loc.end - token.loc.start == 2) {
-                        indices.put(.function, before_len);
-                        try passes.derivative(T, self, indices);
-                        before = .r_paren;
-
-                        token = tokenizer.next();
-                        continue :state token.tag;
-                    }
-
-                    before = .r_paren;
-
-                    tokenizer = std.zig.Tokenizer.init(self.input[offset + token.loc.start + 1 ..]);
-                    offset += token.loc.start + 1;
-
-                    token = tokenizer.next();
-                    continue :state token.tag;
-                },
-
-                else => {},
-            }
-
-            self.buffer.appendAssumeCapacity(')');
-            indices.remove(.function);
-            indices.remove(.parens);
-
-            before = .r_paren;
-            token = next;
-
-            continue :state token.tag;
-        },
-
-        .char_literal => {
-            // derivatives
-            const before_len = offset + token.loc.start;
-
-            try passes.derivative(T, self, indices);
-
-            if (token.loc.end - token.loc.start == 2) {
-                indices.put(.function, before_len);
-                try passes.derivative(T, self, indices);
-                before = .r_paren;
-
-                token = tokenizer.next();
-                continue :state token.tag;
-            }
-
-            before = .r_paren;
-
-            tokenizer = std.zig.Tokenizer.init(self.input[before_len + 1 ..]);
-            offset = before_len + 1;
-
-            token = tokenizer.next();
-            continue :state token.tag;
-        },
-
-        // TODO create a list of valid tags
-        else => |tag| {
-            @branchHint(.likely);
-
-            const slice = self.input[offset + token.loc.start .. offset + token.loc.end];
-
-            const next = tokenizer.next();
-
-            switch (next.tag) {
-                .bang, .bang_equal => switch (token.tag) {
-                    // TODO separate this into its own branch outside of else
-                    .number_literal,
-                    => {
-                        self.buffer.appendSliceAssumeCapacity("factorial(");
-                        self.buffer.appendSliceAssumeCapacity(slice);
-                        self.buffer.appendAssumeCapacity(')');
-                        before = .r_paren;
-
-                        if (next.tag == .bang_equal) {
-                            self.buffer.appendSliceAssumeCapacity("==");
-                            before = .equal;
+    var tokenizer = std.zig.Tokenizer.init(parser.input);
+
+    var token = tokenizer.next();
+    var before: std.zig.Token.Tag = undefined;
+
+    var indices: std.EnumMap(Expression, usize) = .init(.{});
+
+    outer: while (token.tag != .eof) {
+        switch (token.tag) {
+            // MARK: invalid chars
+            .invalid => {
+                var end_idx: usize = 0;
+
+                while (end_idx < parser.input.len) {
+                    const codepoint_len: u3 = std.unicode.utf8ByteSequenceLength(parser.input[offset + token.loc.start + end_idx]) catch unreachable;
+                    const input = parser.input[offset + token.loc.start + end_idx .. offset + token.loc.start + end_idx + codepoint_len];
+
+                    const codepoint: u21 = switch (codepoint_len) {
+                        1 => input[0],
+                        2 => std.unicode.utf8Decode2(input[0..2].*),
+                        3 => std.unicode.utf8Decode3(input[0..3].*),
+                        4 => std.unicode.utf8Decode4(input[0..4].*),
+                        else => unreachable,
+                    } catch unreachable;
+
+                    if (passes.indexOf(u21, l18n.Disallowed, codepoint) != null) return error.InvalidCharacter;
+                    if (passes.indexOf(u21, l18n.Math.codepoint ++ l18n.Separator ++ l18n.Whitespace, codepoint) != null) break;
+
+                    if (passes.indexOf(u21, &l18n.RewriteInPlace.codepoints, codepoint)) |index| {
+                        if (before == .identifier) {
+                            buffer[idx] = '\"';
+                            idx += 1;
                         }
 
-                        token = tokenizer.next();
+                        const rewrite = l18n.RewriteInPlace.inner[index].rewrite;
 
-                        continue :state token.tag;
-                    },
-
-                    else => {
-                        self.buffer.appendSliceAssumeCapacity(slice);
-
-                        before = tag;
-                        token = tokenizer.next();
-                        continue :state token.tag;
-                    },
-                },
-
-                .invalid => {
-                    const new_slice = self.input[offset + next.loc.start .. offset + next.loc.end];
-
-                    if (std.mem.eql(u8, new_slice[0..2], &.{ 0xC2, 0xB0 })) {
-                        self.buffer.appendSliceAssumeCapacity("degree(");
-                        self.buffer.appendSliceAssumeCapacity(slice);
-                        self.buffer.appendAssumeCapacity(')');
+                        @memcpy(buffer[idx .. idx + rewrite.len], rewrite);
+                        idx += rewrite.len;
 
                         // reset
-                        if (offset + token.loc.start + 1 >= self.input.len) continue :state .eof;
+                        if (offset + token.loc.start + end_idx >= parser.input.len) break :outer;
 
-                        tokenizer = std.zig.Tokenizer.init(self.input[offset + token.loc.start + 4 .. self.input.len :0]);
-                        offset += token.loc.start + 4;
+                        tokenizer = std.zig.Tokenizer.init(parser.input[offset + token.loc.start + end_idx + rewrite.len + 1 ..]);
+                        offset += token.loc.start + end_idx + rewrite.len + 1;
 
-                        before = .r_paren;
+                        before = .identifier;
                         token = tokenizer.next();
-
-                        continue :state token.tag;
+                        continue :outer;
                     }
-                },
 
-                else => {},
-            }
+                    end_idx += codepoint_len;
+                }
 
-            // std.debug.print("`{s}`, {any}\n", .{ slice, token });
-            self.buffer.appendSliceAssumeCapacity(slice);
+                if (before != .identifier) {
+                    @memcpy(buffer[idx .. idx + 2], "@\"");
+                    idx += 2;
+                }
 
-            before = tag;
-            token = next;
+                @memcpy(buffer[idx .. idx + end_idx], parser.input[offset + token.loc.start .. offset + token.loc.start + end_idx]);
+                idx += end_idx;
 
-            continue :state token.tag;
-        },
+                buffer[idx] = '\"';
+                idx += 1;
+
+                indices.remove(.identifier);
+
+                // reset
+                if (offset + token.loc.start + end_idx >= parser.input.len) break;
+
+                tokenizer = std.zig.Tokenizer.init(parser.input[offset + token.loc.start + end_idx ..]);
+                offset += token.loc.start + end_idx;
+
+                before = .identifier;
+                token = tokenizer.next();
+                continue;
+            },
+
+            // MARK: numbers
+            .number_literal => {
+                indices.put(.number, idx);
+                const token_length = token.loc.end - token.loc.start;
+
+                @memcpy(buffer[idx .. idx + token_length], parser.input[offset + token.loc.start .. offset + token.loc.end]);
+                idx += token_length;
+            },
+
+            // MARK: factorial
+            .bang => try passes.factorial(before, &indices, buffer, &idx),
+
+            // MARK: identifier
+            .identifier => {
+                indices.put(.identifier, idx);
+                const token_length = token.loc.end - token.loc.start;
+                before = token.tag;
+
+                var next = tokenizer.next();
+                switch (next.tag) {
+                    // If invalid, this means that our identifier either contains an Unicode codepoint, or is before an Unicode character that should be replaced.
+                    // Despite only the first case requiring this, it's generally safer to wrap the identifier in `@"..."`.
+                    // MARK: complex identifier/derivative
+                    .invalid => {
+                        @memcpy(buffer[idx .. idx + 2], "@\"");
+                        idx += 2;
+                    },
+
+                    // `<identifier>(` is a function call, and needs to be tracked.
+                    // MARK: function call
+                    .l_paren => {
+                        indices.put(.function, idx);
+
+                        @memcpy(buffer[idx .. idx + token_length], parser.input[offset + token.loc.start .. offset + token.loc.end]);
+                        idx += token_length;
+
+                        buffer[idx] = '(';
+                        idx += 1;
+
+                        before = next.tag;
+                        next = tokenizer.next();
+                        token = next;
+                        continue;
+                    },
+
+                    else => {},
+                }
+
+                @memcpy(buffer[idx .. idx + token_length], parser.input[offset + token.loc.start .. offset + token.loc.end]);
+                idx += token_length;
+
+                token = next;
+                continue;
+            },
+
+            // MARK: implicit multiplication
+            // `...(` -> `... * (`, if the previous token is a number or a right parenthesis
+            .l_paren => {
+                switch (before) {
+                    .number_literal, .r_paren => {
+                        buffer[idx] = '*';
+                        idx += 1;
+                    },
+
+                    else => {},
+                }
+
+                indices.put(.parenthesis, idx);
+
+                buffer[idx] = '(';
+                idx += 1;
+            },
+
+            // MARK: double equals
+            // `=` -> `==`
+            .equal => {
+                @memcpy(buffer[idx .. idx + 2], "==");
+                idx += 2;
+            },
+
+            // "default" branch
+            .plus, .minus, .asterisk, .slash, .r_paren => {
+                const token_length = token.loc.end - token.loc.start;
+
+                @memcpy(buffer[idx .. idx + token_length], parser.input[offset + token.loc.start .. offset + token.loc.end]);
+                idx += token_length;
+            },
+
+            .eof => {},
+
+            // MARK: derivation
+            // Can be something like this: "f(x)' + g(x)'" or a double derivation ("f(x)''").
+            // If this was a single derivation at the end, it would be an `.invalid`.
+            .char_literal => {
+                const token_length = token.loc.end - token.loc.start;
+
+                // "''".len == 2; double derivation
+                if (token_length == 2) {}
+            },
+
+            else => @panic(@tagName(token.tag)), //return error.InvalidToken,
+        }
+
+        before = token.tag;
+        token = tokenizer.next();
     }
 
-    self.buffer.appendSliceAssumeCapacity(post);
-}
-
-test preprocess {
-    const input = "3! + 30° = 🥰";
-
-    var p = Parser(f64).init(input[0..input.len :0], testing.allocator);
-    defer p.deinit();
-
-    try p.preprocess();
-
-    std.debug.print("before: `{s}`\nafter: `{s}`\n", .{ input, p.buffer.items });
-}
-
-test "preprocess2" {
-    const input = "3!=6";
-
-    var p = Parser(f64).init(input[0..input.len :0], testing.allocator);
-    defer p.deinit();
-
-    try p.preprocess();
-
-    std.debug.print("before: `{s}`\nafter: `{s}`\n", .{ input, p.buffer.items });
-}
-
-test "preprocess3" {
-    const input = "(n - 1)!=6";
-
-    var p = Parser(f64).init(input[0..input.len :0], testing.allocator);
-    defer p.deinit();
-
-    try p.preprocess();
-
-    std.debug.print("before: `{s}`\nafter: `{s}`\n", .{ input, p.buffer.items });
-}
-
-test "preprocess4" {
-    const input = "2(n - 1)";
-
-    var p = Parser(f64).init(input[0..input.len :0], testing.allocator);
-    defer p.deinit();
-
-    try p.preprocess();
-
-    std.debug.print("before: `{s}`\nafter: `{s}`\n", .{ input, p.buffer.items });
-}
-
-test "preprocess5" {
-    const input = "x(x + 1)";
-
-    var p = Parser(f64).init(input[0..input.len :0], testing.allocator);
-    defer p.deinit();
-
-    try p.preprocess();
-
-    std.debug.print("before: `{s}`\nafter: `{s}`\n", .{ input, p.buffer.items });
-}
-
-test "preprocess6" {
-    const input = "🐈(🐈 + 1)";
-
-    var p = Parser(f64).init(input[0..input.len :0], testing.allocator);
-    defer p.deinit();
-
-    try p.preprocess();
-
-    std.debug.print("before: `{s}`\nafter: `{s}`\n", .{ input, p.buffer.items });
-}
-
-test "preprocess7" {
-    const input = "(x - 1)(x + 1)";
-
-    var p = Parser(f64).init(input[0..input.len :0], testing.allocator);
-    defer p.deinit();
-
-    try p.preprocess();
-
-    std.debug.print("before: `{s}`\nafter: `{s}`\n", .{ input, p.buffer.items });
-}
-
-test "preprocess8" {
-    const input = "ogórek = 3";
-
-    var p = Parser(f64).init(input[0..input.len :0], testing.allocator);
-    defer p.deinit();
-
-    try p.preprocess();
-
-    std.debug.print("before: `{s}`\nafter: `{s}`\n", .{ input, p.buffer.items });
+    return buffer[0..idx];
+    // std.debug.print("final: `{s}`\n", .{buffer});
+    // @trap();
 }
 
 const std = @import("std");
-const parser = @import("parser");
+const l18n = @import("parser/l18n");
 const passes = @import("parser/passes");
 
-const testing = std.testing;
-const Parser = parser.Parser;
-const l18n = @import("parser/l18n");
+const Parser = @import("parser").Parser;

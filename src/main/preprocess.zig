@@ -19,8 +19,8 @@ pub fn preprocess(
         const cycles_start = rdtsc();
 
         var parser = corundum.parser.Parser(f64).init(input, allocator);
-        try parser.preprocess();
-        parser.deinit();
+        const output = try parser.preprocess();
+        defer allocator.free(output);
 
         const cycles_end = rdtsc();
         const took = timer.read();
@@ -109,11 +109,11 @@ pub fn preprocess(
     }
 
     var parser = corundum.parser.Parser(f64).init(input, allocator);
-    defer parser.deinit();
 
-    try parser.preprocess();
+    const output = try parser.preprocess();
+    defer allocator.free(output);
 
-    std.debug.print("\nactual output: `{s}`\n", .{parser.buffer.items});
+    std.debug.print("\nactual output: `{s}`\n", .{output});
 
     return;
 }

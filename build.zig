@@ -23,7 +23,7 @@ pub fn build(b: *std.Build) !void {
     const run_unit_tests = b.addRunArtifact(unit_tests);
     test_step.dependOn(&run_unit_tests.step);
 
-    try modules(b, root, run_unit_tests);
+    try modules(b, "src", root, run_unit_tests);
 
     // templates
     try generate(
@@ -312,8 +312,8 @@ pub fn build(b: *std.Build) !void {
     perf_step.dependOn(&run_perf.step);
 }
 
-fn modules(b: *std.Build, root: *std.Build.Module, tests: *std.Build.Step.Run) !void {
-    var iterator = (try std.fs.cwd().openDir("src", .{ .iterate = true })).iterate();
+fn modules(b: *std.Build, directory: []const u8, root: *std.Build.Module, tests: *std.Build.Step.Run) !void {
+    var iterator = (try std.fs.cwd().openDir(directory, .{ .iterate = true })).iterate();
     while (try iterator.next()) |entry| {
         if (entry.kind != .file) continue;
         if (std.mem.indexOf(u8, entry.name, ".zig") != entry.name.len - 4) continue;
@@ -321,7 +321,7 @@ fn modules(b: *std.Build, root: *std.Build.Module, tests: *std.Build.Step.Run) !
         if (std.mem.eql(u8, "main.zig", entry.name)) continue;
         if (std.mem.eql(u8, "wasm.zig", entry.name)) continue;
 
-        try submodules(b, root, entry, "src", tests);
+        try submodules(b, root, entry, directory, tests);
     }
 
     var modules_iterator = root.import_table.iterator();

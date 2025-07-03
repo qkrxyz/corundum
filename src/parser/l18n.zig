@@ -1,7 +1,11 @@
 const std = @import("std");
 
-pub fn asVector(comptime T: type, comptime data: []const T) @Vector(data.len, T) {
-    const result: @Vector(data.len, T) = data[0..data.len].*;
+pub fn asBytes(comptime input: []const u21) [input.len][4]u8 {
+    comptime var result: [input.len][4]u8 = undefined;
+    for (input, 0..) |codepoint, i| {
+        const bytes: []const u8 = std.mem.asBytes(codepoint);
+        result[i] = bytes;
+    }
     return result;
 }
 
@@ -61,27 +65,45 @@ pub const Math = struct {
 
 pub const RewriteData = struct { original: u21, rewrite: []const u8 };
 
-pub const RewriteInPlace: []RewriteData = &.{
-    .{ .original = 0x00D7, .rewrite = "*" }, // multiplication
-    .{ .original = 0x00F7, .rewrite = "/" }, // division
-    .{ .original = 0x2044, .rewrite = "/" }, // fraction slash
-    .{ .original = 0x2205, .rewrite = "emptyset()" }, // empty set
-    .{ .original = 0x2212, .rewrite = "-" }, // minus sign
-    .{ .original = 0x2215, .rewrite = "/" }, // division slash
-    .{ .original = 0x2217, .rewrite = "*" }, // asterisk operator
-    .{ .original = 0x221E, .rewrite = "infinity()" }, // infinity
-    .{ .original = 0x2227, .rewrite = "and" }, // logical and
-    .{ .original = 0x2228, .rewrite = "or" }, // logical or
-    .{ .original = 0x2264, .rewrite = "<=" }, // less than or equal to
-    .{ .original = 0x2265, .rewrite = ">=" }, // greater than or equal to
-    .{ .original = 0x2295, .rewrite = "+" }, // circled plus
-    .{ .original = 0x2296, .rewrite = "-" }, // circled minus
-    .{ .original = 0x2297, .rewrite = "*" }, // circled times
-    .{ .original = 0x2298, .rewrite = "/" }, // circled division slash
-    .{ .original = 0x229B, .rewrite = "*" }, // circled asterisk operator
-    .{ .original = 0x229C, .rewrite = "=" }, // circled equals
-    .{ .original = 0x229D, .rewrite = "-" }, // circled dash
-    .{ .original = 0x229E, .rewrite = "+" }, // squared plus
-    .{ .original = 0x229F, .rewrite = "-" }, // squared minus
-    .{ .original = 0x22A0, .rewrite = "*" }, // squared times
+pub const RewriteInPlace = struct {
+    pub const inner: []const RewriteData = &.{
+        .{ .original = 0x00D7, .rewrite = "*" }, // multiplication
+        .{ .original = 0x00F7, .rewrite = "/" }, // division
+        .{ .original = 0x2044, .rewrite = "/" }, // fraction slash
+        .{ .original = 0x2205, .rewrite = "emptyset()" }, // empty set
+        .{ .original = 0x2212, .rewrite = "-" }, // minus sign
+        .{ .original = 0x2215, .rewrite = "/" }, // division slash
+        .{ .original = 0x2217, .rewrite = "*" }, // asterisk operator
+        .{ .original = 0x221E, .rewrite = "infinity()" }, // infinity
+        .{ .original = 0x2227, .rewrite = "and" }, // logical and
+        .{ .original = 0x2228, .rewrite = "or" }, // logical or
+        .{ .original = 0x2264, .rewrite = "<=" }, // less than or equal to
+        .{ .original = 0x2265, .rewrite = ">=" }, // greater than or equal to
+        .{ .original = 0x2295, .rewrite = "+" }, // circled plus
+        .{ .original = 0x2296, .rewrite = "-" }, // circled minus
+        .{ .original = 0x2297, .rewrite = "*" }, // circled times
+        .{ .original = 0x2298, .rewrite = "/" }, // circled division slash
+        .{ .original = 0x229B, .rewrite = "*" }, // circled asterisk operator
+        .{ .original = 0x229C, .rewrite = "=" }, // circled equals
+        .{ .original = 0x229D, .rewrite = "-" }, // circled dash
+        .{ .original = 0x229E, .rewrite = "+" }, // squared plus
+        .{ .original = 0x229F, .rewrite = "-" }, // squared minus
+        .{ .original = 0x22A0, .rewrite = "*" }, // squared times
+    };
+
+    pub const codepoints = blk: {
+        var result: [inner.len]u21 = undefined;
+        for (inner, 0..) |data, i| {
+            result[i] = data.original;
+        }
+        break :blk result;
+    };
+
+    pub const replacements = blk: {
+        var result: [inner.len][]u8 = undefined;
+        for (inner, 0..) |data, i| {
+            result[i] = data.rewrite;
+        }
+        break :blk result;
+    };
 };

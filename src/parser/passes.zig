@@ -1,50 +1,72 @@
 pub fn factorial(
-    comptime T: type,
-    start_idx: usize,
-    self: *parser.Parser(T),
-    next: std.zig.Token,
-) !std.zig.Token.Tag {
+    before: std.zig.Token.Tag,
+    indices: *std.EnumMap(preprocess.Expression, usize),
+    buffer: []u8,
+    idx: *usize,
+) !void {
+    const idx_val = idx.*;
+
+    const start_idx, const key = switch (before) {
+        // implicit multiplication/function/parenthesis
+        .r_paren => if (indices.get(.function)) |f| .{
+            f,
+            preprocess.Expression.function,
+        } else if (indices.get(.number)) |n| .{
+            n,
+            preprocess.Expression.number,
+        } else .{
+            indices.get(.parenthesis) orelse return error.InvalidToken,
+            preprocess.Expression.parenthesis,
+        },
+
+        .number_literal => .{ indices.getAssertContains(.number), preprocess.Expression.number },
+        .identifier => .{ indices.getAssertContains(.identifier), preprocess.Expression.identifier },
+
+        else => return error.InvalidToken,
+    };
+
     const factorial_string = "factorial(";
 
-    var previous_len = self.buffer.items.len;
-    self.buffer.items.len += factorial_string.len;
+    @memmove(buffer[factorial_string.len + start_idx .. factorial_string.len + idx_val], buffer[start_idx..idx_val]);
+    @memcpy(buffer[start_idx .. start_idx + factorial_string.len], factorial_string);
+    idx.* += factorial_string.len;
 
-    @memmove(self.buffer.items[start_idx + factorial_string.len ..], self.buffer.items[start_idx..previous_len]);
-    @memcpy(self.buffer.items[start_idx .. start_idx + factorial_string.len], factorial_string);
+    buffer[idx.*] = ')';
+    idx.* += 1;
 
-    previous_len = self.buffer.items.len;
-
-    if (next.tag == .bang_equal) {
-        self.buffer.items.len += 3;
-
-        @memcpy(self.buffer.items[previous_len..self.buffer.items.len], ")==");
-        return .equal;
-    } else {
-        self.buffer.items.len += 1;
-
-        @memcpy(self.buffer.items[previous_len..self.buffer.items.len], ")");
-        return .r_paren;
-    }
+    indices.remove(key);
 }
 
-pub fn derivative(
-    comptime T: type,
-    self: *parser.Parser(T),
-    indices: std.EnumMap(preprocess.ExprType, usize),
-) !void {
-    const beginning = indices.get(.function) orelse indices.get(.identifier) orelse return error.InvalidDerivative;
+pub fn indexOf(comptime T: type, input: []const T, scalar: T) ?usize {
+    var remaining = input;
+    var i: usize = 0;
 
-    const derivative_string = "derivative(";
+    if (std.simd.suggestVectorLength(T)) |length| {
+        const Chunk = @Vector(length, T);
 
-    const previous_len = self.buffer.items.len;
+        while (remaining.len >= length) {
+            const slice = remaining[0..length];
 
-    self.buffer.items.len += derivative_string.len;
+            const chunk: Chunk = slice.*;
+            const splatted: Chunk = @splat(scalar);
 
-    @memmove(self.buffer.items[beginning + derivative_string.len ..], self.buffer.items[beginning..previous_len]);
-    @memcpy(self.buffer.items[beginning .. beginning + derivative_string.len], derivative_string);
-    self.buffer.appendAssumeCapacity(')');
+            const result = chunk == splatted;
+
+            if (std.simd.firstTrue(result)) |j| return i + j;
+
+            remaining = remaining[length..];
+            i += length;
+        }
+    }
+
+    for (remaining) |codepoint| {
+        if (codepoint == scalar) return i;
+
+        i += 1;
+    }
+
+    return null;
 }
 
 const std = @import("std");
-const parser = @import("parser");
 const preprocess = @import("parser/preprocess");
