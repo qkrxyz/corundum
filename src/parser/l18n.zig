@@ -1,3 +1,5 @@
+const std = @import("std");
+
 pub fn asVector(comptime T: type, comptime data: []const T) @Vector(data.len, T) {
     const result: @Vector(data.len, T) = data[0..data.len].*;
     return result;

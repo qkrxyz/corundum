@@ -7,10 +7,10 @@ pub const ExprType = enum {
 pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, comptime post: []const u8) !void {
     // the maximum additional count of characters these characters require.
     // equals, degree, factorial, unicode characters, implicit multiplication, derivation.
-    const costs: @Vector(6, usize) = .{ 1, 7, 10, 3, 1, 11 };
+    const costs: @Vector(6, usize) = .{ 1, 7, 11, 3, 1, 12 };
 
     // equals, degree, factorial, unicode characters, implicit multiplication, derivation.
-    var counts: @Vector(6, usize) = .{ 0, 0, 0, 0, 0, 1 };
+    var counts: @Vector(6, usize) = .{ 0, 0, 0, 0, 0, 0 };
 
     var i: usize = 0;
     var ch = self.input[i];
@@ -41,7 +41,7 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
             '\'' => {
                 @branchHint(.unlikely);
 
-                counts[3] += 1;
+                counts[5] += 1;
             },
 
             // standard ASCII characters
@@ -53,7 +53,9 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
             0x2A...0x2F,
             0x3A...0x3C,
             0x3E...0x40,
+            0x41...0x5A,
             0x5B...0x60,
+            0x61...0x7A,
             0x7B...0x7E,
             0x80...0x84,
             0x86...0xAF,
@@ -90,25 +92,10 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
                 };
             },
 
-            // letters - also can have an implicit multiplication
-            0x41...0x5A,
-            0x61...0x7A,
-            => {
-                @branchHint(.likely);
-
-                if (i + 1 < self.input.len) switch (self.input[i + 1]) {
-                    // (, )
-                    0x28, 0x29 => counts[4] += 1,
-
-                    else => {},
-                };
-            },
-
-            // UTF-8 start bytes, need to be encoded using `@"..."`. And just in case also increment the implicit multiplication counter.
+            // UTF-8 start bytes, need to be encoded using `@"..."`.
             0xC0...0xF7,
             => {
                 counts[3] += 1;
-                counts[4] += 1;
 
                 i += try std.unicode.utf8ByteSequenceLength(ch) - 1;
             },
@@ -130,6 +117,16 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
 
     state: switch (token.tag) {
         .invalid => {
+            if (self.input[offset + token.loc.start] == '\'') {
+                try passes.derivative(T, self, indices);
+
+                before = .r_paren;
+                tokenizer = std.zig.Tokenizer.init(self.input[offset + token.loc.end ..]);
+
+                token = tokenizer.next();
+                continue :state token.tag;
+            }
+
             const slice = self.input[offset + token.loc.start .. offset + token.loc.end];
 
             if (!std.unicode.utf8ValidateSlice(slice)) return error.InvalidCharacter;
@@ -191,14 +188,53 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
 
             const next = tokenizer.next();
             switch (next.tag) {
-                .invalid => self.buffer.appendSliceAssumeCapacity("@\""),
+                .char_literal => {
+                    self.buffer.appendSliceAssumeCapacity(self.input[offset + token.loc.start .. offset + token.loc.end]);
+                    try passes.derivative(T, self, indices);
+
+                    before = .r_paren;
+
+                    // `''` has length 2, which means that this is a double derivative
+                    if (next.loc.end - next.loc.start == 2) {
+                        indices.put(.function, indices.get(.identifier) orelse unreachable);
+                        try passes.derivative(T, self, indices);
+                        before = .r_paren;
+
+                        token = tokenizer.next();
+                        continue :state token.tag;
+                    }
+
+                    tokenizer = std.zig.Tokenizer.init(self.input[offset + next.loc.start + 1 ..]);
+                    offset += next.loc.start + 1;
+
+                    token = tokenizer.next();
+                    continue :state token.tag;
+                },
+
+                .invalid => {
+                    if (self.input[offset + next.loc.start] == '\'') {
+                        self.buffer.appendSliceAssumeCapacity(self.input[offset + token.loc.start .. offset + token.loc.end]);
+                        try passes.derivative(T, self, indices);
+
+                        before = .r_paren;
+
+                        tokenizer = std.zig.Tokenizer.init(self.input[offset + next.loc.start + 1 ..]);
+                        offset += next.loc.start + 1;
+
+                        token = tokenizer.next();
+
+                        continue :state token.tag;
+                    } else {
+                        self.buffer.appendSliceAssumeCapacity("@\"");
+                    }
+                },
 
                 .bang, .bang_equal => {
+                    indices.put(.function, self.buffer.items.len);
                     self.buffer.appendSliceAssumeCapacity(self.input[offset + token.loc.start .. offset + token.loc.end]);
                     before = try passes.factorial(T, self.buffer.items.len - token.loc.end + token.loc.start, self, next);
 
                     token = tokenizer.next();
-
                     continue :state token.tag;
                 },
 
@@ -217,13 +253,26 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
         .bang => {
             var next = tokenizer.next();
 
+            if (indices.get(.function)) |func| {
+                before = try passes.factorial(
+                    T,
+                    func,
+                    self,
+                    next,
+                );
+
+                token = next;
+                continue :state token.tag;
+            }
+
             if (before != null) switch (before.?) {
                 // ...!
                 .number_literal, .identifier => {
-                    before = try passes.factorial(T, indices.getAssertContains(.identifier), self, next);
+                    const start = indices.getAssertContains(.identifier);
+                    before = try passes.factorial(T, start, self, next);
+                    indices.put(.function, start);
 
                     token = tokenizer.next();
-
                     continue :state token.tag;
                 },
 
@@ -234,8 +283,6 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
                 self.buffer.appendSliceAssumeCapacity("!=");
 
                 next = tokenizer.next();
-            } else {
-                self.buffer.appendAssumeCapacity('!');
             }
 
             token = next;
@@ -303,19 +350,43 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
                     continue :state token.tag;
                 },
 
-                .invalid, .char_literal => if (self.input[offset + next.loc.start] == '\'') {
+                .invalid => if (self.input[offset + next.loc.start] == '\'') {
                     // derivatives
                     self.buffer.appendAssumeCapacity(')');
                     try passes.derivative(T, self, indices);
 
-                    if (offset + token.loc.start + 2 >= self.input.len) continue :state .eof;
+                    if (offset + token.loc.start + 1 >= self.input.len) continue :state .eof;
                     indices.remove(.function);
 
-                    tokenizer = std.zig.Tokenizer.init(self.input[offset + token.loc.start + 2 .. self.input.len :0]);
-                    offset += token.loc.start + 2;
+                    tokenizer = std.zig.Tokenizer.init(self.input[offset + token.loc.start + 1 .. self.input.len :0]);
+                    offset += token.loc.start + 1;
 
                     token = tokenizer.next();
 
+                    continue :state token.tag;
+                },
+
+                .char_literal => {
+                    // derivatives
+                    const before_len = offset + token.loc.start;
+
+                    try passes.derivative(T, self, indices);
+
+                    if (token.loc.end - token.loc.start == 2) {
+                        indices.put(.function, before_len);
+                        try passes.derivative(T, self, indices);
+                        before = .r_paren;
+
+                        token = tokenizer.next();
+                        continue :state token.tag;
+                    }
+
+                    before = .r_paren;
+
+                    tokenizer = std.zig.Tokenizer.init(self.input[offset + token.loc.start + 1 ..]);
+                    offset += token.loc.start + 1;
+
+                    token = tokenizer.next();
                     continue :state token.tag;
                 },
 
@@ -323,6 +394,8 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
             }
 
             self.buffer.appendAssumeCapacity(')');
+            indices.remove(.function);
+            indices.remove(.parens);
 
             before = .r_paren;
             token = next;
@@ -332,16 +405,25 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
 
         .char_literal => {
             // derivatives
+            const before_len = offset + token.loc.start;
+
             try passes.derivative(T, self, indices);
 
-            if (offset + token.loc.start + 2 >= self.input.len) continue :state .eof;
-            indices.remove(.function);
+            if (token.loc.end - token.loc.start == 2) {
+                indices.put(.function, before_len);
+                try passes.derivative(T, self, indices);
+                before = .r_paren;
 
-            tokenizer = std.zig.Tokenizer.init(self.input[offset + token.loc.start + 2 .. self.input.len :0]);
-            offset += token.loc.start + 2;
+                token = tokenizer.next();
+                continue :state token.tag;
+            }
+
+            before = .r_paren;
+
+            tokenizer = std.zig.Tokenizer.init(self.input[before_len + 1 ..]);
+            offset = before_len + 1;
 
             token = tokenizer.next();
-
             continue :state token.tag;
         },
 
@@ -406,6 +488,7 @@ pub fn preprocess(comptime T: type, self: *Parser(T), comptime pre: []const u8, 
                 else => {},
             }
 
+            // std.debug.print("`{s}`, {any}\n", .{ slice, token });
             self.buffer.appendSliceAssumeCapacity(slice);
 
             before = tag;

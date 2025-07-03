@@ -32,7 +32,7 @@ pub fn derivative(
     self: *parser.Parser(T),
     indices: std.EnumMap(preprocess.ExprType, usize),
 ) !void {
-    const beginning = indices.get(.function) orelse return error.InvalidDerivative;
+    const beginning = indices.get(.function) orelse indices.get(.identifier) orelse return error.InvalidDerivative;
 
     const derivative_string = "derivative(";
 
