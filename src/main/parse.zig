@@ -1,4 +1,5 @@
-pub fn preprocess(
+pub fn parse(
+    comptime T: type,
     input: [:0]const u8,
     allocator: std.mem.Allocator,
     parent: *std.Progress.Node,
@@ -6,7 +7,13 @@ pub fn preprocess(
     frequency: fn () callconv(.@"inline") u64,
     comptime iterations: comptime_int,
 ) !void {
-    var progress = parent.start("Preprocessing...", iterations);
+    const preprocessed = blk: {
+        var parser = corundum.parser.Parser(T).init(input, allocator);
+        break :blk try parser.preprocess();
+    };
+    defer allocator.free(preprocessed);
+
+    var progress = parent.start("Parsing...", iterations);
 
     var times: []u64 = try allocator.alloc(u64, iterations);
     defer allocator.free(times);
@@ -24,9 +31,9 @@ pub fn preprocess(
 
         const cycles_start = rdtsc();
 
-        var parser = corundum.parser.Parser(f64).init(input, gpa);
-        const output = try parser.preprocess();
-        defer gpa.free(output);
+        var parser = corundum.parser.Parser(T).init(input, gpa);
+        const output = try parser.parse(preprocessed);
+        defer output.deinit(gpa);
 
         const cycles_end = rdtsc();
         const took = timer.read();
@@ -116,14 +123,16 @@ pub fn preprocess(
 
     var parser = corundum.parser.Parser(f64).init(input, allocator);
 
-    const output = try parser.preprocess();
-    defer allocator.free(output);
+    const output = try parser.parse(preprocessed);
+    defer output.deinit(allocator);
 
-    std.debug.print("\nactual output: `{s}`\n", .{output});
+    std.debug.print("\nactual output: `", .{});
+    try std.zon.stringify.serializeArbitraryDepth(output, .{}, std.io.getStdErr().writer());
+    std.debug.print("`\n", .{});
 
     return;
 }
 
+const builtin = @import("builtin");
 const std = @import("std");
 const corundum = @import("corundum");
-const builtin = @import("builtin");

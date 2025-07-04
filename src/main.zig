@@ -15,71 +15,30 @@ pub fn main() !void {
         _ = debug_allocator.deinit();
     };
 
-    var arena = std.heap.ArenaAllocator.init(gpa);
-    defer arena.deinit();
-
-    const allocator = arena.allocator();
-
-    const arguments = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, arguments);
+    const arguments = try std.process.argsAlloc(gpa);
+    defer std.process.argsFree(gpa, arguments);
 
     if (arguments.len < 2) return;
 
-    if (std.mem.eql(u8, "--preprocess", arguments[1])) {
-        const perf = @import("perf.zig");
+    // actual work
+    var handles: [2]std.Thread = undefined;
 
-        try @import("main/preprocess.zig").preprocess(arguments[2], allocator, perf.rdtsc, perf.frequency, perf.ITERATIONS * 100);
-    }
+    var parent = std.Progress.start(.{ .root_name = "Benchmarking...", .estimated_total_items = handles.len });
+    defer parent.end();
 
-    // var diagnostics: std.zon.parse.Diagnostics = .{};
+    const perf = @import("perf.zig");
 
-    // const parsed = std.zon.parse.fromSlice(*const corundum.expr.Expression(f64), allocator, arguments[1], &diagnostics, .{}) catch {
-    //     var error_iterator = diagnostics.iterateErrors();
-    //     while (error_iterator.next()) |err| {
-    //         const stderr = std.io.getStdErr().writer();
-    //         try err.fmtMessage(&diagnostics).format("error: {s}\n", .{}, stderr);
-    //     }
+    handles[0] = try std.Thread.spawn(
+        .{},
+        @import("main/preprocess.zig").preprocess,
+        .{ arguments[1], gpa, &parent, perf.rdtsc, perf.frequency, perf.ITERATIONS * 100 },
+    );
 
-    //     std.process.exit(1);
-    // };
-    // defer parsed.deinit(allocator);
+    handles[1] = try std.Thread.spawn(
+        .{},
+        @import("main/parse.zig").parse,
+        .{ f64, arguments[1], gpa, &parent, perf.rdtsc, perf.frequency, perf.ITERATIONS * 100 },
+    );
 
-    // const structural = parsed.structural();
-    // const hash = parsed.hash();
-
-    // inline for (corundum.template.Templates.all()) |template| {
-    //     const value = corundum.template.Templates.get(template);
-    //     switch (value.module(f64)) {
-    //         .@"n-ary" => |n_ary| {
-    //             const bindings = n_ary.matches(parsed, gpa);
-
-    //             if (bindings) |b| {
-    //                 const solution = try n_ary.solve(parsed, b, .default, gpa);
-    //                 std.mem.doNotOptimizeAway(solution.steps);
-    //                 solution.deinit(gpa);
-    //                 gpa.free(b);
-    //             } else |_| {}
-    //         },
-    //         .dynamic => |dynamic| {
-    //             const bindings = dynamic.matches(parsed);
-
-    //             if (bindings) |b| {
-    //                 const solution = try dynamic.solve(parsed, b, .default, gpa);
-    //                 std.mem.doNotOptimizeAway(solution.steps);
-    //                 solution.deinit(gpa);
-    //             } else |_| {}
-    //         },
-    //         .structure => |structure| if (structural == comptime structure.ast.structural()) {
-    //             if (structure.matches(parsed)) |bindings| {
-    //                 const solution = try structure.solve(parsed, bindings, .default, allocator);
-    //                 std.mem.doNotOptimizeAway(solution);
-    //                 defer solution.deinit(allocator);
-    //             } else |_| {}
-    //         },
-    //         .identity => |identity| if (hash == comptime identity.ast.hash()) {
-    //             const solution = identity.proof(.default);
-    //             std.mem.doNotOptimizeAway(solution);
-    //         },
-    //     }
-    // }
+    for (handles) |handle| handle.join();
 }

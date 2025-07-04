@@ -31,8 +31,8 @@ pub fn Context(comptime T: type) type {
 
         language: Language,
         functions: struct {
-            pow10: fn (x: usize) T,
-            npow10: fn (x: usize) T,
+            pow10: *const fn (x: usize) T,
+            npow10: *const fn (x: usize) T,
         },
 
         pub const default = Self{

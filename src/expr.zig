@@ -121,6 +121,10 @@ pub fn Expression(T: type) type {
             return clone(&input, allocator);
         }
 
+        pub fn find(self: *const Self, other: *const Self) ?*const Self {
+            return find_impl(T, self, other);
+        }
+
         /// Compute the hash of this expression.
         ///
         /// Uses XxHash64.
@@ -190,3 +194,4 @@ const std = @import("std");
 const hash_impl = @import("expr/hash").hash;
 const structural_impl = @import("expr/structural").structural;
 const clone_impl = @import("expr/clone").clone;
+const find_impl = @import("expr/find").find;

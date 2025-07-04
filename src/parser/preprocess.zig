@@ -10,6 +10,8 @@ const INVALID_BYTES: []const u8 = &[_]u8{
 
 const REPLACEMENTS: []const u8 = l18n.asBytes(l18n.RewriteInPlace.codepoints);
 
+const MAX_DEPTH = 64;
+
 // MARK: count
 fn count(input: []const u8) !usize {
     var result: usize = input.len;
@@ -184,9 +186,9 @@ pub const PreprocessingError = error{
 // .number_literal, .bang/.bang_equal -> `factorial(...)`[==]
 // .number_literal/.r_paren, .l_paren -> `... * ...`
 // MARK: preprocess
-pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 {
+pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![:0]u8 {
     const length = try count(parser.input);
-    var buffer: []u8 = try parser.allocator.alloc(u8, length + PREFIX.len + POSTFIX.len);
+    var buffer: []u8 = try parser.allocator.alloc(u8, length + PREFIX.len + POSTFIX.len + 1);
 
     // modified when appending to the buffer
     var idx: usize = 0;
@@ -194,14 +196,16 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
     // modified when resetting the tokenizer
     var offset: usize = 0;
 
+    @memcpy(buffer[idx .. idx + PREFIX.len], PREFIX);
+    idx += PREFIX.len;
+
     var tokenizer = std.zig.Tokenizer.init(parser.input);
 
     var depth: usize = 0;
     var token = tokenizer.next();
     var before: ?std.zig.Token.Tag = null;
 
-    var indices: std.ArrayList(Token) = try .initCapacity(parser.allocator, length / 2);
-    defer indices.clearAndFree();
+    var indices: [MAX_DEPTH]usize = undefined;
 
     outer: while (token.tag != .eof) {
         switch (token.tag) {
@@ -253,11 +257,7 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
                     @memcpy(buffer[idx .. idx + 2], "@\"");
                     idx += 2;
 
-                    indices.appendAssumeCapacity(Token{
-                        .depth = depth,
-                        .kind = .identifier,
-                        .index = idx - 2,
-                    });
+                    indices[depth] = idx - 2;
                 }
 
                 @memcpy(buffer[idx .. idx + end_idx], parser.input[offset + token.loc.start .. offset + token.loc.start + end_idx]);
@@ -279,11 +279,7 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
 
             // MARK: numbers
             .number_literal => {
-                indices.appendAssumeCapacity(Token{
-                    .depth = depth,
-                    .kind = .number,
-                    .index = idx,
-                });
+                indices[depth] = idx;
                 const token_length = token.loc.end - token.loc.start;
 
                 @memcpy(buffer[idx .. idx + token_length], parser.input[offset + token.loc.start .. offset + token.loc.end]);
@@ -292,24 +288,13 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
 
             // MARK: factorial
             .bang => {
-                if (indices.items.len < 2) return error.InvalidToken;
-
-                var start: Token = indices.items[0];
-                for (indices.items[1..]) |t| {
-                    if (t.depth != depth) continue;
-                    start = t;
-                }
-
-                try passes.factorial(start.index, buffer, &idx);
+                const start = indices[depth];
+                try passes.factorial(start, buffer, &idx);
             },
 
             // MARK: identifier
             .identifier => {
-                indices.appendAssumeCapacity(Token{
-                    .depth = depth,
-                    .kind = .identifier,
-                    .index = idx,
-                });
+                indices[depth] = idx;
 
                 const token_length = token.loc.end - token.loc.start;
                 before = token.tag;
@@ -327,11 +312,7 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
                     // `<identifier>(` is a function call, and needs to be tracked.
                     // MARK: function call
                     .l_paren => {
-                        indices.appendAssumeCapacity(Token{
-                            .depth = depth,
-                            .kind = .function,
-                            .index = idx,
-                        });
+                        indices[depth] = idx;
 
                         @memcpy(buffer[idx .. idx + token_length], parser.input[offset + token.loc.start .. offset + token.loc.end]);
                         idx += token_length;
@@ -368,11 +349,7 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
                     else => {},
                 };
 
-                indices.appendAssumeCapacity(Token{
-                    .depth = depth,
-                    .kind = .identifier,
-                    .index = idx,
-                });
+                indices[depth] = idx;
 
                 buffer[idx] = '(';
                 idx += 1;
@@ -420,7 +397,12 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
         token = tokenizer.next();
     }
 
-    return buffer[0..idx];
+    @memcpy(buffer[idx .. idx + POSTFIX.len], POSTFIX);
+    idx += POSTFIX.len;
+
+    buffer[idx] = 0;
+
+    return buffer[0..idx :0];
 }
 
 const std = @import("std");
