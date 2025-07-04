@@ -148,7 +148,7 @@ fn count(input: []const u8) !usize {
 
                 if (passes.indexOf(u21, &data, codepoint)) |idx| {
                     result += l18n.RewriteInPlace.inner[idx].rewrite.len + 3;
-                    i += 1;
+                    // i += 1;
                 }
 
                 i += 1;
@@ -185,8 +185,8 @@ pub const PreprocessingError = error{
 // .number_literal/.r_paren, .l_paren -> `... * ...`
 // MARK: preprocess
 pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 {
-    const length = try count(parser.input) + PREFIX.len + POSTFIX.len;
-    var buffer: []u8 = try parser.allocator.alloc(u8, length);
+    const length = try count(parser.input);
+    var buffer: []u8 = try parser.allocator.alloc(u8, length + PREFIX.len + POSTFIX.len);
 
     // modified when appending to the buffer
     var idx: usize = 0;
@@ -292,7 +292,7 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![]u8 
 
             // MARK: factorial
             .bang => {
-                if (indices.items.len == 0) return error.InvalidToken;
+                if (indices.items.len < 2) return error.InvalidToken;
 
                 var start: Token = indices.items[0];
                 for (indices.items[1..]) |t| {

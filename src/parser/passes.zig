@@ -15,9 +15,9 @@ pub fn factorial(
     idx.* += 1;
 }
 
-pub fn indexOf(comptime T: type, input: []const T, scalar: T) ?usize {
+pub fn indexOf(comptime T: type, input: []const T, scalar: T) ?u32 {
     var remaining = input;
-    var i: usize = 0;
+    var i: u32 = 0;
 
     if (std.simd.suggestVectorLength(T)) |length| {
         const Chunk = @Vector(length, T);
