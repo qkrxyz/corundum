@@ -7,10 +7,7 @@ pub fn parse(
     frequency: fn () callconv(.@"inline") u64,
     comptime iterations: comptime_int,
 ) !void {
-    const preprocessed = blk: {
-        var parser = corundum.parser.Parser(T).init(input, allocator);
-        break :blk try parser.preprocess();
-    };
+    const preprocessed = try corundum.parser.Parser(T).preprocess(input, allocator);
     defer allocator.free(preprocessed);
 
     var progress = parent.start("Parsing...", iterations);
@@ -31,9 +28,10 @@ pub fn parse(
 
         const cycles_start = rdtsc();
 
-        var parser = corundum.parser.Parser(T).init(input, gpa);
-        const output = try parser.parse(preprocessed);
-        defer output.deinit(gpa);
+        const output = try corundum.parser.Parser(T).parse(preprocessed, gpa);
+        defer {
+            output.expression.deinit(gpa);
+        }
 
         const cycles_end = rdtsc();
         const took = timer.read();
@@ -121,14 +119,20 @@ pub fn parse(
         }
     }
 
-    var parser = corundum.parser.Parser(f64).init(input, allocator);
-
-    const output = try parser.parse(preprocessed);
-    defer output.deinit(allocator);
+    const output = try corundum.parser.Parser(f64).parse(preprocessed, allocator);
+    defer {
+        output.variables.deinit();
+        output.expression.deinit(allocator);
+    }
 
     std.debug.print("\nactual output: `", .{});
-    try std.zon.stringify.serializeArbitraryDepth(output, .{}, std.io.getStdErr().writer());
-    std.debug.print("`\n", .{});
+    try std.zon.stringify.serializeArbitraryDepth(output.expression, .{}, std.io.getStdErr().writer());
+    std.debug.print("`\n\nvariables:\n", .{});
+
+    var iterator = output.variables.iterator();
+    while (iterator.next()) |entry| {
+        std.debug.print("{s} = {any}\n", .{ entry.key_ptr.*, entry.value_ptr.* });
+    }
 
     return;
 }

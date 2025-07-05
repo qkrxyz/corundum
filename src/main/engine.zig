@@ -1,4 +1,5 @@
-pub fn preprocess(
+pub fn engine(
+    comptime T: type,
     input: [:0]const u8,
     allocator: std.mem.Allocator,
     parent: *std.Progress.Node,
@@ -6,7 +7,7 @@ pub fn preprocess(
     frequency: fn () callconv(.@"inline") u64,
     comptime iterations: comptime_int,
 ) !void {
-    var progress = parent.start("Preprocessing...", iterations);
+    var progress = parent.start("Running engine...", iterations);
 
     var times: []u64 = try allocator.alloc(u64, iterations);
     defer allocator.free(times);
@@ -24,8 +25,9 @@ pub fn preprocess(
 
         const cycles_start = rdtsc();
 
-        const output = try corundum.parser.Parser(f64).preprocess(input, gpa);
-        defer gpa.free(output);
+        var eng = corundum.engine.Engine(T).init(gpa, input);
+        const solution = try eng.run();
+        defer solution.deinit(gpa);
 
         const cycles_end = rdtsc();
         const took = timer.read();
@@ -113,14 +115,16 @@ pub fn preprocess(
         }
     }
 
-    const output = try corundum.parser.Parser(f64).preprocess(input, allocator);
-    defer allocator.free(output);
+    var eng = corundum.engine.Engine(T).init(allocator, input);
+    const output = try eng.run();
+    defer output.deinit(allocator);
 
-    std.debug.print("\nactual output: `{s}`\n", .{output});
+    std.debug.print("\nactual output: `", .{});
+    try std.zon.stringify.serializeArbitraryDepth(output, .{}, std.io.getStdErr().writer());
 
     return;
 }
 
+const builtin = @import("builtin");
 const std = @import("std");
 const corundum = @import("corundum");
-const builtin = @import("builtin");

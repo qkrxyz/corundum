@@ -1,6 +1,6 @@
 pub fn translate(
     comptime T: type,
-    context: Context(T),
+    variables: *std.StringHashMap(*const Expression(T)),
     ast: *const std.zig.Ast,
     index: usize,
     allocator: std.mem.Allocator,
@@ -11,8 +11,8 @@ pub fn translate(
         .add, .sub, .mul, .div, .mod => {
             const left_index, const right_index = node.data.node_and_node;
 
-            const left = try translate(T, context, ast, @intFromEnum(left_index), allocator);
-            const right = try translate(T, context, ast, @intFromEnum(right_index), allocator);
+            const left = try translate(T, variables, ast, @intFromEnum(left_index), allocator);
+            const right = try translate(T, variables, ast, @intFromEnum(right_index), allocator);
 
             return Expression(T).clone(
                 &.{ .binary = .{
@@ -35,23 +35,22 @@ pub fn translate(
         .equal_equal => {
             const left_index, const right_index = node.data.node_and_node;
 
-            const left = try translate(T, context, ast, @intFromEnum(left_index), allocator);
-            const right = try translate(T, context, ast, @intFromEnum(right_index), allocator);
+            const left = try translate(T, variables, ast, @intFromEnum(left_index), allocator);
+            const right = try translate(T, variables, ast, @intFromEnum(right_index), allocator);
 
             // an assignment, since the variable from the left-hand side doesn't repeat in the right side
             if (left.* == .variable and right.find(left) == null) {
-                // try context.variables.put(left.variable, right);
-                return Expression(T).clone(
-                    &.{ .equation = .{
-                        .left = left,
-                        .right = right,
-                        .sign = .equals,
-                    } },
-                    allocator,
-                );
+                try variables.put(left.variable, right);
             }
 
-            @panic("TODO: equality");
+            const expression = try allocator.create(Expression(T));
+            expression.* = .{ .equation = .{
+                .left = left,
+                .right = right,
+                .sign = .equals,
+            } };
+
+            return expression;
         },
 
         // number
@@ -65,7 +64,7 @@ pub fn translate(
         .identifier => {
             var identifier = ast.tokenSlice(node.main_token);
 
-            if (std.mem.eql(u8, "@\"", identifier[0..2]) and identifier[identifier.len - 1] == '\"') {
+            if (std.mem.startsWith(u8, identifier, "@\"") and identifier[identifier.len - 1] == '\"') {
                 identifier = identifier[2 .. identifier.len - 1];
             }
 
@@ -87,7 +86,7 @@ pub fn translate(
                 } }, allocator);
             }
 
-            const parameter_expr = try translate(T, context, ast, @intFromEnum(parameter.unwrap().?), allocator);
+            const parameter_expr = try translate(T, variables, ast, @intFromEnum(parameter.unwrap().?), allocator);
 
             const arguments = try allocator.alloc(*const Expression(T), 1);
             arguments[0] = parameter_expr;

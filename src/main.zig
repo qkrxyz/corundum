@@ -21,7 +21,7 @@ pub fn main() !void {
     if (arguments.len < 2) return;
 
     // actual work
-    var handles: [2]std.Thread = undefined;
+    var handles: [3]std.Thread = undefined;
 
     var parent = std.Progress.start(.{ .root_name = "Benchmarking...", .estimated_total_items = handles.len });
     defer parent.end();
@@ -37,6 +37,12 @@ pub fn main() !void {
     handles[1] = try std.Thread.spawn(
         .{},
         @import("main/parse.zig").parse,
+        .{ f64, arguments[1], gpa, &parent, perf.rdtsc, perf.frequency, perf.ITERATIONS * 100 },
+    );
+
+    handles[2] = try std.Thread.spawn(
+        .{},
+        @import("main/engine.zig").engine,
         .{ f64, arguments[1], gpa, &parent, perf.rdtsc, perf.frequency, perf.ITERATIONS * 100 },
     );
 

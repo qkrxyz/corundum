@@ -186,9 +186,9 @@ pub const PreprocessingError = error{
 // .number_literal, .bang/.bang_equal -> `factorial(...)`[==]
 // .number_literal/.r_paren, .l_paren -> `... * ...`
 // MARK: preprocess
-pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![:0]u8 {
-    const length = try count(parser.input);
-    var buffer: []u8 = try parser.allocator.alloc(u8, length + PREFIX.len + POSTFIX.len + 1);
+pub fn preprocess(input: [:0]const u8, allocator: std.mem.Allocator) PreprocessingError![:0]u8 {
+    const length = try count(input);
+    var buffer: []u8 = try allocator.alloc(u8, length + PREFIX.len + POSTFIX.len + 1);
 
     // modified when appending to the buffer
     var idx: usize = 0;
@@ -199,7 +199,7 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![:0]u
     @memcpy(buffer[idx .. idx + PREFIX.len], PREFIX);
     idx += PREFIX.len;
 
-    var tokenizer = std.zig.Tokenizer.init(parser.input);
+    var tokenizer = std.zig.Tokenizer.init(input);
 
     var depth: usize = 0;
     var token = tokenizer.next();
@@ -213,20 +213,20 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![:0]u
             .invalid => {
                 var end_idx: usize = 0;
 
-                while (end_idx < parser.input.len) {
-                    const codepoint_len: u3 = std.unicode.utf8ByteSequenceLength(parser.input[offset + token.loc.start + end_idx]) catch unreachable;
-                    const input = parser.input[offset + token.loc.start + end_idx .. offset + token.loc.start + end_idx + codepoint_len];
+                inner: while (end_idx < input.len) {
+                    const codepoint_len: u3 = std.unicode.utf8ByteSequenceLength(input[offset + token.loc.start + end_idx]) catch unreachable;
+                    const token_str = input[offset + token.loc.start + end_idx .. offset + token.loc.start + end_idx + codepoint_len];
 
                     const codepoint: u21 = switch (codepoint_len) {
-                        1 => input[0],
-                        2 => std.unicode.utf8Decode2(input[0..2].*),
-                        3 => std.unicode.utf8Decode3(input[0..3].*),
-                        4 => std.unicode.utf8Decode4(input[0..4].*),
+                        1 => token_str[0],
+                        2 => std.unicode.utf8Decode2(token_str[0..2].*),
+                        3 => std.unicode.utf8Decode3(token_str[0..3].*),
+                        4 => std.unicode.utf8Decode4(token_str[0..4].*),
                         else => unreachable,
                     } catch unreachable;
 
                     if (passes.indexOf(u21, l18n.Disallowed, codepoint) != null) return error.InvalidCharacter;
-                    if (passes.indexOf(u21, l18n.Math.codepoint ++ l18n.Separator ++ l18n.Whitespace, codepoint) != null) break;
+                    if (passes.indexOf(u21, l18n.Math.codepoint ++ l18n.Separator ++ l18n.Whitespace, codepoint) != null) break :inner;
 
                     if (passes.indexOf(u21, &l18n.RewriteInPlace.codepoints, codepoint)) |index| {
                         if (before == .identifier) {
@@ -240,9 +240,9 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![:0]u
                         idx += rewrite.len;
 
                         // reset
-                        if (offset + token.loc.start + end_idx >= parser.input.len) break :outer;
+                        if (offset + token.loc.start + end_idx >= input.len) break :outer;
 
-                        tokenizer = std.zig.Tokenizer.init(parser.input[offset + token.loc.start + end_idx + rewrite.len + 1 ..]);
+                        tokenizer = std.zig.Tokenizer.init(input[offset + token.loc.start + end_idx + rewrite.len + 1 ..]);
                         offset += token.loc.start + end_idx + rewrite.len + 1;
 
                         before = .identifier;
@@ -260,16 +260,16 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![:0]u
                     indices[depth] = idx - 2;
                 }
 
-                @memcpy(buffer[idx .. idx + end_idx], parser.input[offset + token.loc.start .. offset + token.loc.start + end_idx]);
+                @memcpy(buffer[idx .. idx + end_idx], input[offset + token.loc.start .. offset + token.loc.start + end_idx]);
                 idx += end_idx;
 
                 buffer[idx] = '\"';
                 idx += 1;
 
                 // reset
-                if (offset + token.loc.start + end_idx >= parser.input.len) break;
+                if (offset + token.loc.start + end_idx >= input.len) break;
 
-                tokenizer = std.zig.Tokenizer.init(parser.input[offset + token.loc.start + end_idx ..]);
+                tokenizer = std.zig.Tokenizer.init(input[offset + token.loc.start + end_idx ..]);
                 offset += token.loc.start + end_idx;
 
                 before = .identifier;
@@ -282,7 +282,7 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![:0]u
                 indices[depth] = idx;
                 const token_length = token.loc.end - token.loc.start;
 
-                @memcpy(buffer[idx .. idx + token_length], parser.input[offset + token.loc.start .. offset + token.loc.end]);
+                @memcpy(buffer[idx .. idx + token_length], input[offset + token.loc.start .. offset + token.loc.end]);
                 idx += token_length;
             },
 
@@ -314,7 +314,7 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![:0]u
                     .l_paren => {
                         indices[depth] = idx;
 
-                        @memcpy(buffer[idx .. idx + token_length], parser.input[offset + token.loc.start .. offset + token.loc.end]);
+                        @memcpy(buffer[idx .. idx + token_length], input[offset + token.loc.start .. offset + token.loc.end]);
                         idx += token_length;
 
                         buffer[idx] = '(';
@@ -330,7 +330,7 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![:0]u
                     else => {},
                 }
 
-                @memcpy(buffer[idx .. idx + token_length], parser.input[offset + token.loc.start .. offset + token.loc.end]);
+                @memcpy(buffer[idx .. idx + token_length], input[offset + token.loc.start .. offset + token.loc.end]);
                 idx += token_length;
 
                 token = next;
@@ -374,7 +374,7 @@ pub fn preprocess(comptime T: type, parser: *Parser(T)) PreprocessingError![:0]u
             .plus, .minus, .asterisk, .slash => {
                 const token_length = token.loc.end - token.loc.start;
 
-                @memcpy(buffer[idx .. idx + token_length], parser.input[offset + token.loc.start .. offset + token.loc.end]);
+                @memcpy(buffer[idx .. idx + token_length], input[offset + token.loc.start .. offset + token.loc.end]);
                 idx += token_length;
             },
 

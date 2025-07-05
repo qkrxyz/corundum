@@ -34,14 +34,21 @@ pub fn Context(comptime T: type) type {
             pow10: *const fn (x: usize) T,
             npow10: *const fn (x: usize) T,
         },
+        variables: *std.StringHashMap(*const Expression(T)),
 
-        pub const default = Self{
-            .language = .en_US,
-            .functions = .{
-                .pow10 = pow10,
-                .npow10 = npow10,
-            },
-        };
+        pub fn init(
+            language: Language,
+            variables: *std.StringHashMap(*const Expression(T)),
+        ) Self {
+            return Self{
+                .language = language,
+                .functions = .{
+                    .pow10 = pow10,
+                    .npow10 = npow10,
+                },
+                .variables = variables,
+            };
+        }
 
         pub fn find_variants(
             self: *const Self,
@@ -107,6 +114,10 @@ pub fn Context(comptime T: type) type {
             }
 
             return null;
+        }
+
+        pub fn deinit(self: *const Self) void {
+            self.variables.deinit();
         }
     };
 }
